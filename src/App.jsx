@@ -26,7 +26,7 @@ const firebaseConfig = {
   measurementId: "G-4ZVN2KJYZN"
 };
 
-// 安全初始化 Firebase（避免熱重載重複初始化）
+// 安全初始化 Firebase
 let app = null;
 let auth = null;
 let db = null;
@@ -644,7 +644,6 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState('');
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [cloudConnected, setCloudConnected] = useState(false);
 
   // --- NAVIGATION & UI STATE ---
@@ -707,7 +706,7 @@ export default function App() {
 
   // --- 監聽 Firestore 即時同步 ---
   useEffect(() => {
-    if (!db || !user || isDemoMode) {
+    if (!db || !user) {
       setCloudConnected(false);
       return;
     }
@@ -734,7 +733,7 @@ export default function App() {
     } catch (err) {
       setCloudConnected(false);
     }
-  }, [user, isDemoMode]);
+  }, [user]);
 
   // --- 寫入雲端與本機存檔 Helper ---
   const saveData = async (field, value, localKey) => {
@@ -743,7 +742,7 @@ export default function App() {
     } catch (e) {
       console.warn("LocalStorage 寫入失敗:", e);
     }
-    if (db && user && !isDemoMode && cloudConnected) {
+    if (db && user && cloudConnected) {
       try {
         const tripDocRef = doc(db, "trips", "okinawa-2027");
         await setDoc(tripDocRef, { [field]: value }, { merge: true });
@@ -753,45 +752,29 @@ export default function App() {
     }
   };
 
-  // --- Google 登入處理（含預覽環境自動容錯）---
+  // --- Google 登入處理 ---
   const handleGoogleLogin = async () => {
     setAuthError('');
     if (!auth) {
-      setIsDemoMode(true);
-      setUser({ email: ALLOWED_EMAILS[0], displayName: "預覽測試模式" });
+      setAuthError('系統尚未連線成功，請稍後再試。');
       return;
     }
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (err) {
-      if (
-        err.code === 'auth/unauthorized-domain' ||
-        err.code === 'auth/operation-not-allowed' ||
-        err.code === 'auth/popup-blocked'
-      ) {
-        setIsDemoMode(true);
-        setUser({ email: ALLOWED_EMAILS[0], displayName: "家人預覽測試" });
-      } else {
-        setAuthError('登入失敗，請稍後再試或改用預覽體驗模式。');
-      }
+      setAuthError('登入失敗，請確認 Firebase 網域已授權或稍後再試。');
     }
   };
 
-  const handleDemoLogin = () => {
-    setIsDemoMode(true);
-    setUser({ email: ALLOWED_EMAILS[0], displayName: "家人預覽體驗" });
-  };
-
   const handleLogout = async () => {
-    if (auth && !isDemoMode) {
+    if (auth) {
       try {
         await signOut(auth);
       } catch (e) {
         console.warn(e);
       }
     }
-    setIsDemoMode(false);
     setUser(null);
   };
 
@@ -967,13 +950,6 @@ export default function App() {
             className="w-full mt-6 bg-[#4A5D54] active:bg-[#3B4A43] text-white font-bold py-4 px-5 rounded-2xl shadow-md flex items-center justify-center gap-2 text-base transition-colors"
           >
             <Shield className="w-5 h-5" /> 使用 Google 帳號登入
-          </button>
-
-          <button
-            onClick={handleDemoLogin}
-            className="w-full mt-3 bg-[#FAF9F7] active:bg-[#F2EFE9] text-[#6B6554] border border-[#DCD6CA] font-bold py-3 px-4 rounded-2xl text-sm transition-colors"
-          >
-            直接進入預覽測試畫面
           </button>
         </div>
       </div>
@@ -1770,7 +1746,7 @@ export default function App() {
         )}
       </main>
 
-      {/* SOS 緊急聯絡視窗 (已移除雲端備份方框) */}
+      {/* SOS 緊急聯絡視窗 */}
       {showSOSModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl max-h-[85vh] flex flex-col">
@@ -1816,7 +1792,7 @@ export default function App() {
         </div>
       )}
 
-      {/* BOTTOM TAB BAR (無 + 圓框，字體放大方便長輩點擊) */}
+      {/* BOTTOM TAB BAR */}
       <nav className="flex-shrink-0 bg-white border-t border-[#EAE6DF] pt-2.5 px-4 pb-5 flex justify-around items-center z-20 absolute bottom-0 w-full h-[82px] shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
         <button onClick={() => setActiveTab('overview')} className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${activeTab === 'overview' ? 'text-[#4A5D54]' : 'text-[#A09C94]'}`}>
           <Home className="w-6 h-6 mb-1" />

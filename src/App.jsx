@@ -5,7 +5,7 @@ import {
   AlertCircle, FileText, Coffee, Plus, Trash2, Receipt, Car, X, Tag,
   Home, List, CheckSquare, Sun, CloudRain, Users, FileCheck2, ChevronRight, CheckCircle2,
   ShieldAlert, ArrowRightLeft, Copy, Check, Camera, PieChart as PieChartIcon, BarChart3,
-  Umbrella, Compass, LogOut, Lock, Shield, BookOpen, CreditCard, Cloud, CloudOff
+  Umbrella, Compass, LogOut, Lock, Shield, BookOpen, CreditCard, Cloud, CloudOff, UserCheck
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -38,13 +38,30 @@ try {
   console.warn("Firebase 初始化略過，將使用本機模式:", err);
 }
 
-// --- 4 位家人 Email 白名單 ---
+// --- 4 位家人 Email 白名單與預設稱呼對照 ---
 const ALLOWED_EMAILS = [
   "lovepeace0212@gmail.com",
   "amanda0091@gmail.com",
   "joe.lom122@gmail.com",
   "hsunuan@gmail.com"
 ];
+
+const EMAIL_TO_DEFAULT_MEMBER = {
+  "lovepeace0212@gmail.com": "本人",
+  "amanda0091@gmail.com": "老婆",
+  "joe.lom122@gmail.com": "爸爸",
+  "hsunuan@gmail.com": "媽媽"
+};
+
+const FAMILY_MEMBERS = ['本人', '老婆', '爸爸', '媽媽'];
+
+// 每位家人的專屬標籤配色
+const MEMBER_BADGE_STYLE = {
+  '本人': 'bg-[#EAF3FA] text-[#316999] border-[#D3E5F4]',
+  '老婆': 'bg-[#FCECEE] text-[#B93A49] border-[#F2D7D9]',
+  '爸爸': 'bg-[#EBF5EE] text-[#2F6B4A] border-[#D4E8DC]',
+  '媽媽': 'bg-[#FDF2E9] text-[#C75A22] border-[#F4E0D1]'
+};
 
 // 判斷是否為開發/預覽沙盒環境（在正式部署的 Vercel / Firebase 網址上必定為 false，確保 100% 門禁安全）
 const isSandboxPreview = (() => {
@@ -554,7 +571,6 @@ const CATEGORY_COLORS = {
   '購物': '#C75A22',
   '其他': '#8A857B'
 };
-const FAMILY_MEMBERS = ['本人', '老婆', '爸爸', '媽媽'];
 
 // --- CHECKLIST INITIAL DATA ---
 const initialDepartureList = {
@@ -585,8 +601,8 @@ const DEPARTURE_CATEGORIES = Object.keys(initialDepartureList);
 const LUGGAGE_CATEGORIES = Object.keys(initialLuggageList);
 
 const initialShoppingList = [
-  { id: 1, text: "Royce 巧克力", checked: false },
-  { id: 2, text: "波上宮小書包御守", checked: false }
+  { id: 1, text: "Royce 巧克力", checked: false, addedBy: "本人", checkedBy: "" },
+  { id: 2, text: "波上宮小書包御守", checked: false, addedBy: "本人", checkedBy: "" }
 ];
 
 // --- HELPER: Local Storage ---
@@ -600,6 +616,16 @@ const getSavedState = (key, initialValue) => {
 };
 
 // --- HELPER COMPONENTS ---
+const MemberBadge = ({ name, prefix = "" }) => {
+  if (!name) return null;
+  const style = MEMBER_BADGE_STYLE[name] || 'bg-[#ECE9E0] text-[#6B6554] border-[#DCD6CA]';
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-bold rounded-full border shrink-0 whitespace-nowrap ${style}`}>
+      {prefix}{name}
+    </span>
+  );
+};
+
 const TagBadge = ({ tag }) => {
   let colorClass = "bg-[#ECE9E0] text-[#6B6554] border-[#DCD6CA]";
   if (tag.includes("必吃") || tag.includes("必點")) colorClass = "bg-[#FDF2E9] text-[#C75A22] border-[#F4E0D1]";
@@ -671,6 +697,26 @@ export default function App() {
   const [cloudConnected, setCloudConnected] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
+  // --- 目前操作者身分 (本人/老婆/爸爸/媽媽) ---
+  const [currentMember, setCurrentMember] = useState(() => getSavedState('okinawa_current_member', '本人'));
+
+  // 切換目前操作者身分
+  const handleSelectMember = (memberName) => {
+    setCurrentMember(memberName);
+    try {
+      window.localStorage.setItem('okinawa_current_member', JSON.stringify(memberName));
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  // 循環切換操作者身分 (點擊頂部按鈕快速切換)
+  const cycleMember = () => {
+    const idx = FAMILY_MEMBERS.indexOf(currentMember);
+    const next = FAMILY_MEMBERS[(idx + 1) % FAMILY_MEMBERS.length];
+    handleSelectMember(next);
+  };
+
   // 偵測是否為 LINE / FB / IG 等內建瀏覽器
   const isInAppBrowser = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -710,7 +756,7 @@ export default function App() {
     return diffDays > 0 ? diffDays : 0;
   }, []);
 
-  // --- 監聽 Firebase 登入狀態 (自動忽略大小寫與前後空白) ---
+  // --- 監聽 Firebase 登入狀態 (自動忽略大小寫與前後空白，並自動對應家人稱呼) ---
   useEffect(() => {
     if (isSandboxPreview) {
       setAuthLoading(false);
@@ -729,6 +775,11 @@ export default function App() {
         if (isDefaultPlaceholder || normalizedAllowed.includes(userEmail)) {
           setUser(currentUser);
           setAuthError('');
+          // 若本機尚未手動切換過身分，自動依據登入信箱帶入對應稱呼
+          const savedMember = window.localStorage.getItem('okinawa_current_member');
+          if (!savedMember && EMAIL_TO_DEFAULT_MEMBER[userEmail]) {
+            handleSelectMember(EMAIL_TO_DEFAULT_MEMBER[userEmail]);
+          }
         } else {
           setAuthError(`此帳號 (${currentUser.email}) 不在授權家人名單中`);
           signOut(auth);
@@ -906,14 +957,28 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  // 開啟新增花費時，預設將付款人帶入目前的操作者身分
+  const openAddExpenseModal = () => {
+    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: currentMember, receiptImg: '' });
+    setIsAddingExpense(true);
+  };
+
   const handleAddExpense = (e) => {
     e.preventDefault();
     if (!newExpense.amount) return;
-    const updated = [{ ...newExpense, id: Date.now(), amount: Number(newExpense.amount) }, ...expenses];
+    const updated = [
+      {
+        ...newExpense,
+        id: Date.now(),
+        amount: Number(newExpense.amount),
+        addedBy: currentMember
+      },
+      ...expenses
+    ];
     setExpenses(updated);
     saveData('expenses', updated, 'okinawa_expenses');
     setIsAddingExpense(false);
-    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: '本人', receiptImg: '' });
+    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: currentMember, receiptImg: '' });
   };
 
   const deleteExpense = (id) => {
@@ -922,19 +987,35 @@ export default function App() {
     saveData('expenses', updated, 'okinawa_expenses');
   };
 
-  // --- 清單操作邏輯 ---
+  // --- 清單操作邏輯 (自動紀錄是誰打勾、誰新增) ---
   const toggleChecklist = (type, category, idx) => {
     if (type === 'departure') {
       const updated = {
         ...departureList,
-        [category]: departureList[category].map((item, i) => i === idx ? { ...item, checked: !item.checked } : item)
+        [category]: departureList[category].map((item, i) => {
+          if (i !== idx) return item;
+          const nextChecked = !item.checked;
+          return {
+            ...item,
+            checked: nextChecked,
+            checkedBy: nextChecked ? currentMember : ''
+          };
+        })
       };
       setDepartureList(updated);
       saveData('departureList', updated, 'okinawa_departure');
     } else {
       const updated = {
         ...luggageList,
-        [category]: luggageList[category].map((item, i) => i === idx ? { ...item, checked: !item.checked } : item)
+        [category]: luggageList[category].map((item, i) => {
+          if (i !== idx) return item;
+          const nextChecked = !item.checked;
+          return {
+            ...item,
+            checked: nextChecked,
+            checkedBy: nextChecked ? currentMember : ''
+          };
+        })
       };
       setLuggageList(updated);
       saveData('luggageList', updated, 'okinawa_luggage');
@@ -942,7 +1023,15 @@ export default function App() {
   };
 
   const toggleShopping = (id) => {
-    const updated = shoppingList.map(item => item.id === id ? { ...item, checked: !item.checked } : item);
+    const updated = shoppingList.map(item => {
+      if (item.id !== id) return item;
+      const nextChecked = !item.checked;
+      return {
+        ...item,
+        checked: nextChecked,
+        checkedBy: nextChecked ? currentMember : ''
+      };
+    });
     setShoppingList(updated);
     saveData('shoppingList', updated, 'okinawa_shopping');
   };
@@ -950,7 +1039,16 @@ export default function App() {
   const addShoppingItem = (e) => {
     e.preventDefault();
     if (!newShoppingItem.trim()) return;
-    const updated = [...shoppingList, { id: Date.now(), text: newShoppingItem.trim(), checked: false }];
+    const updated = [
+      ...shoppingList,
+      {
+        id: Date.now(),
+        text: newShoppingItem.trim(),
+        checked: false,
+        addedBy: currentMember,
+        checkedBy: ''
+      }
+    ];
     setShoppingList(updated);
     saveData('shoppingList', updated, 'okinawa_shopping');
     setNewShoppingItem('');
@@ -1046,13 +1144,23 @@ export default function App() {
 
   return (
     <div className="w-full max-w-md mx-auto h-screen h-[100dvh] font-sans flex flex-col overflow-hidden shadow-2xl relative bg-[#F9F8F5]">
-      {/* HEADER：上下留白一致 */}
+      {/* HEADER：上下留白一致，並加入目前操作者身分顯示與快速切換按鈕 */}
       <header className="py-3.5 px-5 bg-white border-b border-[#EAE6DF] shadow-sm z-10 flex-shrink-0 flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-wider text-[#2D2A26] leading-tight">沖繩之旅</h1>
           <p className="text-sm text-[#8A857B] mt-0.5 font-bold tracking-widest">Winter 2027 • 6天5夜</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {/* 點擊可切換目前是誰在操作 (本人/老婆/爸爸/媽媽) */}
+          <button
+            onClick={cycleMember}
+            title="點擊切換目前操作者身分"
+            className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border active:scale-95 transition-transform ${MEMBER_BADGE_STYLE[currentMember] || 'bg-[#EAF3FA] text-[#316999] border-[#D3E5F4]'}`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            {currentMember}
+          </button>
+
           <span
             title={user?.isPreview ? "預覽模式" : cloudConnected ? "雲端同步中" : "本機記憶模式"}
             className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border ${
@@ -1647,10 +1755,10 @@ export default function App() {
 
             {/* 新增花費按鈕 */}
             <button
-              onClick={() => setIsAddingExpense(true)}
+              onClick={openAddExpenseModal}
               className="w-full bg-white border-2 border-[#4A5D54] text-[#4A5D54] font-bold py-3.5 rounded-2xl shadow-sm flex justify-center items-center gap-2 text-base active:bg-[#EBF5EE]"
             >
-              <Plus className="w-5 h-5" /> 新增一筆花費
+              <Plus className="w-5 h-5" /> 新增一筆花費 (由 {currentMember} 紀錄)
             </button>
 
             {/* 新增花費表單 */}
@@ -1706,28 +1814,35 @@ export default function App() {
               </div>
             )}
 
-            {/* 花費列表 */}
+            {/* 花費列表 (顯示付款人與新增紀錄者) */}
             <div className="space-y-3 pb-4">
               {expenses.map((expense) => (
                 <div key={expense.id} className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-[#FAF9F7] p-2.5 rounded-xl border border-[#F0EBE1]">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="bg-[#FAF9F7] p-2.5 rounded-xl border border-[#F0EBE1] shrink-0">
                       <Tag className="w-4 h-4 text-[#8A857B]" />
                     </div>
-                    <div>
-                      <p className="font-bold text-base text-[#2D2A26]">{expense.desc}</p>
-                      <p className="text-xs text-[#8A857B] mt-0.5">{dayToDate[expense.day]} • {expense.category} • {expense.payer}</p>
+                    <div className="min-w-0">
+                      <p className="font-bold text-base text-[#2D2A26] truncate">{expense.desc}</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className="text-xs text-[#8A857B] font-medium">
+                          {dayToDate[expense.day]} • {expense.category} • {expense.payer}付款
+                        </span>
+                        {expense.addedBy && (
+                          <MemberBadge name={`${expense.addedBy}紀錄`} />
+                        )}
+                      </div>
                       {expense.receiptImg && (
                         <button
                           onClick={() => setPreviewReceipt(expense.receiptImg)}
-                          className="mt-1 text-xs text-[#316999] font-bold underline flex items-center gap-1"
+                          className="mt-1.5 text-xs text-[#316999] font-bold underline flex items-center gap-1"
                         >
                           <Camera className="w-3 h-3" /> 查看收據照片
                         </button>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 shrink-0">
                     <div className="text-right">
                       <div className="font-bold text-base text-[#C75A22]">¥ {Number(expense.amount).toLocaleString()}</div>
                       <div className="text-[11px] text-[#8A857B]">NT$ {Math.round(Number(expense.amount) * exchangeRate).toLocaleString()}</div>
@@ -1757,6 +1872,26 @@ export default function App() {
               <button onClick={() => setChecklistTab('shopping')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'shopping' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>購物清單</button>
             </div>
 
+            {/* 切換目前操作者身分提示列 */}
+            <div className="flex-shrink-0 bg-[#FAF9F7] border-b border-[#EAE6DF] px-5 py-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-[#8A857B]">點選切換目前操作者：</span>
+              <div className="flex gap-1.5">
+                {FAMILY_MEMBERS.map(m => (
+                  <button
+                    key={m}
+                    onClick={() => handleSelectMember(m)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                      currentMember === m
+                        ? `${MEMBER_BADGE_STYLE[m]} shadow-sm scale-105`
+                        : 'bg-white text-[#8A857B] border-[#EAE6DF]'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10">
               {checklistTab === 'departure' && (
                 <div className="space-y-5 animate-fade-in">
@@ -1770,9 +1905,14 @@ export default function App() {
                         <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
                         <div className="divide-y divide-[#F0EBE1]">
                           {items.map((item, idx) => (
-                            <label key={`${category}-${idx}`} className="flex items-center px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                              <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('departure', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
-                              <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
+                            <label key={`${category}-${idx}`} className="flex items-center justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('departure', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
+                                <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
+                              </div>
+                              {item.checked && item.checkedBy && (
+                                <MemberBadge name={item.checkedBy} prefix="✓ " />
+                              )}
                             </label>
                           ))}
                         </div>
@@ -1791,9 +1931,14 @@ export default function App() {
                         <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
                         <div className="divide-y divide-[#F0EBE1]">
                           {items.map((item, idx) => (
-                            <label key={`${category}-${idx}`} className="flex items-center px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                              <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('luggage', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
-                              <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
+                            <label key={`${category}-${idx}`} className="flex items-center justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('luggage', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
+                                <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
+                              </div>
+                              {item.checked && item.checkedBy && (
+                                <MemberBadge name={item.checkedBy} prefix="✓ " />
+                              )}
                             </label>
                           ))}
                         </div>
@@ -1810,22 +1955,36 @@ export default function App() {
                       type="text"
                       value={newShoppingItem}
                       onChange={e => setNewShoppingItem(e.target.value)}
-                      placeholder="想買什麼藥妝或伴手禮？"
+                      placeholder={`以「${currentMember}」身分新增想買的東西...`}
                       className="flex-1 bg-white border border-[#EAE6DF] rounded-xl p-3 text-base text-[#2D2A26] focus:outline-none focus:border-[#4A5D54] shadow-sm"
                     />
-                    <button type="submit" className="bg-[#4A5D54] text-white px-5 rounded-xl font-bold active:bg-[#3B4A43] shadow-sm">
+                    <button type="submit" className="bg-[#4A5D54] text-white px-5 rounded-xl font-bold active:bg-[#3B4A43] shadow-sm shrink-0">
                       新增
                     </button>
                   </form>
 
                   <div className="bg-white rounded-2xl border border-[#EAE6DF] shadow-sm overflow-hidden divide-y divide-[#F0EBE1]">
                     {shoppingList.map(item => (
-                      <div key={item.id} className="flex items-center px-4 py-3.5 justify-between">
-                        <label className="flex items-center gap-3 cursor-pointer flex-1">
-                          <input type="checkbox" checked={item.checked} onChange={() => toggleShopping(item.id)} className="w-5 h-5 accent-[#4A5D54] rounded" />
-                          <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-bold'}`}>{item.text}</span>
+                      <div key={item.id} className="flex items-center px-4 py-3.5 justify-between gap-2">
+                        <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                          <input type="checkbox" checked={item.checked} onChange={() => toggleShopping(item.id)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
+                          <div className="min-w-0">
+                            <span className={`text-base block truncate ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-bold'}`}>
+                              {item.text}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {item.addedBy && (
+                                <span className="text-[11px] text-[#8A857B] font-medium">
+                                  {item.addedBy}新增
+                                </span>
+                              )}
+                              {item.checked && item.checkedBy && (
+                                <MemberBadge name={item.checkedBy} prefix="✓ " />
+                              )}
+                            </div>
+                          </div>
                         </label>
-                        <button onClick={() => deleteShoppingItem(item.id)} className="text-[#DCD6CA] hover:text-[#B93A49] p-1">
+                        <button onClick={() => deleteShoppingItem(item.id)} className="text-[#DCD6CA] hover:text-[#B93A49] p-1 shrink-0">
                           <Trash2 className="w-5 h-5" />
                         </button>
                       </div>
@@ -1917,4 +2076,4 @@ export default function App() {
       `}} />
     </div>
   );
-}
+}```

@@ -63,6 +63,18 @@ const MEMBER_BADGE_STYLE = {
   '媽媽': 'bg-[#FDF2E9] text-[#C75A22] border-[#F4E0D1]'
 };
 
+// 取得項目目前已打勾的家人清單 (相容舊版單人字串與新版陣列)
+const getCheckedMembers = (item) => {
+  if (!item) return [];
+  if (Array.isArray(item.checkedByList)) {
+    return item.checkedByList;
+  }
+  if (item.checked && item.checkedBy) {
+    return [item.checkedBy];
+  }
+  return [];
+};
+
 // 判斷是否為開發/預覽沙盒環境（在正式部署的 Vercel / Firebase 網址上必定為 false，確保 100% 門禁安全）
 const isSandboxPreview = (() => {
   if (typeof window === 'undefined') return false;
@@ -574,26 +586,26 @@ const CATEGORY_COLORS = {
 
 // --- CHECKLIST INITIAL DATA ---
 const initialDepartureList = {
-  "機票": [{ text: "訂機票", checked: false }, { text: "確認護照效期 6 個月以上", checked: false }, { text: "預約機場接送", checked: false }, { text: "截圖機票與飯店訂位單", checked: false }, { text: "線上報到與劃位", checked: false }],
-  "住宿": [{ text: "訂住宿", checked: false }, { text: "填寫入住資料", checked: false }],
-  "行程": [{ text: "熱門餐廳訂位", checked: false }, { text: "門票預購", checked: false }],
-  "保險": [{ text: "旅平險", checked: false }, { text: "不便險", checked: false }, { text: "海外醫療險", checked: false }],
-  "網路": [{ text: "確認手機支援eSIM", checked: false }, { text: "買eSIM或網卡", checked: false }],
-  "付款換匯": [{ text: "選定海外回饋高的信用卡", checked: false }, { text: "開通信用卡海外刷卡", checked: false }, { text: "開通金融卡海外提款", checked: false }, { text: "換匯", checked: false }, { text: "了解退稅規定", checked: false }, { text: "買當地交通卡", checked: false }],
-  "入境文件": [{ text: "填寫 Visit Japan Web", checked: false }],
-  "當地實用APP": [{ text: "地圖 (先下載離線地圖)", checked: false }, { text: "翻譯", checked: false }, { text: "叫車", checked: false }, { text: "大眾運輸 / 火車", checked: false }, { text: "手機設定 (旅遊App放首頁、清出容量)", checked: false }]
+  "機票": [{ text: "訂機票", checked: false, checkedByList: [] }, { text: "確認護照效期 6 個月以上", checked: false, checkedByList: [] }, { text: "預約機場接送", checked: false, checkedByList: [] }, { text: "截圖機票與飯店訂位單", checked: false, checkedByList: [] }, { text: "線上報到與劃位", checked: false, checkedByList: [] }],
+  "住宿": [{ text: "訂住宿", checked: false, checkedByList: [] }, { text: "填寫入住資料", checked: false, checkedByList: [] }],
+  "行程": [{ text: "熱門餐廳訂位", checked: false, checkedByList: [] }, { text: "門票預購", checked: false, checkedByList: [] }],
+  "保險": [{ text: "旅平險", checked: false, checkedByList: [] }, { text: "不便險", checked: false, checkedByList: [] }, { text: "海外醫療險", checked: false, checkedByList: [] }],
+  "網路": [{ text: "確認手機支援eSIM", checked: false, checkedByList: [] }, { text: "買eSIM或網卡", checked: false, checkedByList: [] }],
+  "付款換匯": [{ text: "選定海外回饋高的信用卡", checked: false, checkedByList: [] }, { text: "開通信用卡海外刷卡", checked: false, checkedByList: [] }, { text: "開通金融卡海外提款", checked: false, checkedByList: [] }, { text: "換匯", checked: false, checkedByList: [] }, { text: "了解退稅規定", checked: false, checkedByList: [] }, { text: "買當地交通卡", checked: false, checkedByList: [] }],
+  "入境文件": [{ text: "填寫 Visit Japan Web", checked: false, checkedByList: [] }],
+  "當地實用APP": [{ text: "地圖 (先下載離線地圖)", checked: false, checkedByList: [] }, { text: "翻譯", checked: false, checkedByList: [] }, { text: "叫車", checked: false, checkedByList: [] }, { text: "大眾運輸 / 火車", checked: false, checkedByList: [] }, { text: "手機設定 (旅遊App放首頁、清出容量)", checked: false, checkedByList: [] }]
 };
 
 const initialLuggageList = {
-  "隨身與託運規定": [{ text: "確認航空行李限重", checked: false }, { text: "液體100ml以內放夾鏈袋(隨身)", checked: false }, { text: "行動電源不可託運", checked: false }],
-  "隨身物品": [{ text: "行動電源 (必帶隨身)", checked: false }, { text: "晴雨傘", checked: false }, { text: "濕紙巾", checked: false }, { text: "環保袋", checked: false }, { text: "頸枕", checked: false }],
-  "錢包與證件": [{ text: "護照 (必備)", checked: false }, { text: "日幣現金", checked: false }, { text: "信用卡 (推薦JCB)", checked: false }, { text: "駕照正本 與 日文譯本", checked: false }],
-  "電器與工具": [{ text: "手機充電線", checked: false }, { text: "轉接頭 (日本雙扁平)", checked: false }, { text: "備用耳機", checked: false }],
-  "生活用品": [{ text: "衛生紙", checked: false }, { text: "口罩", checked: false }, { text: "生理用品", checked: false }],
-  "衣物與飾品": [{ text: "薄長袖/薄外套", checked: false }, { text: "防風保暖外套 (冬季)", checked: false }, { text: "好走的鞋", checked: false }, { text: "墨鏡 / 帽子", checked: false }, { text: "泳裝", checked: false }],
-  "洗漱包": [{ text: "牙膏 / 牙刷", checked: false }, { text: "洗髮沐浴旅行組", checked: false }, { text: "常備毛巾", checked: false }],
-  "化妝包": [{ text: "保養品", checked: false }, { text: "海洋友善防曬乳", checked: false }, { text: "卸妝用品", checked: false }],
-  "醫藥包": [{ text: "腸胃藥", checked: false }, { text: "止痛藥", checked: false }, { text: "暈車藥", checked: false }, { text: "OK繃", checked: false }]
+  "隨身與託運規定": [{ text: "確認航空行李限重", checked: false, checkedByList: [] }, { text: "液體100ml以內放夾鏈袋(隨身)", checked: false, checkedByList: [] }, { text: "行動電源不可託運", checked: false, checkedByList: [] }],
+  "隨身物品": [{ text: "行動電源 (必帶隨身)", checked: false, checkedByList: [] }, { text: "晴雨傘", checked: false, checkedByList: [] }, { text: "濕紙巾", checked: false, checkedByList: [] }, { text: "環保袋", checked: false, checkedByList: [] }, { text: "頸枕", checked: false, checkedByList: [] }],
+  "錢包與證件": [{ text: "護照 (必備)", checked: false, checkedByList: [] }, { text: "日幣現金", checked: false, checkedByList: [] }, { text: "信用卡 (推薦JCB)", checked: false, checkedByList: [] }, { text: "駕照正本 與 日文譯本", checked: false, checkedByList: [] }],
+  "電器與工具": [{ text: "手機充電線", checked: false, checkedByList: [] }, { text: "轉接頭 (日本雙扁平)", checked: false, checkedByList: [] }, { text: "備用耳機", checked: false, checkedByList: [] }],
+  "生活用品": [{ text: "衛生紙", checked: false, checkedByList: [] }, { text: "口罩", checked: false, checkedByList: [] }, { text: "生理用品", checked: false, checkedByList: [] }],
+  "衣物與飾品": [{ text: "薄長袖/薄外套", checked: false, checkedByList: [] }, { text: "防風保暖外套 (冬季)", checked: false, checkedByList: [] }, { text: "好走的鞋", checked: false, checkedByList: [] }, { text: "墨鏡 / 帽子", checked: false, checkedByList: [] }, { text: "泳裝", checked: false, checkedByList: [] }],
+  "洗漱包": [{ text: "牙膏 / 牙刷", checked: false, checkedByList: [] }, { text: "洗髮沐浴旅行組", checked: false, checkedByList: [] }, { text: "常備毛巾", checked: false, checkedByList: [] }],
+  "化妝包": [{ text: "保養品", checked: false, checkedByList: [] }, { text: "海洋友善防曬乳", checked: false, checkedByList: [] }, { text: "卸妝用品", checked: false, checkedByList: [] }],
+  "醫藥包": [{ text: "腸胃藥", checked: false, checkedByList: [] }, { text: "止痛藥", checked: false, checkedByList: [] }, { text: "暈車藥", checked: false, checkedByList: [] }, { text: "OK繃", checked: false, checkedByList: [] }]
 };
 
 const DEPARTURE_CATEGORIES = Object.keys(initialDepartureList);
@@ -971,34 +983,37 @@ export default function App() {
     saveData('expenses', updated, 'okinawa_expenses');
   };
 
+  // --- 多人獨立勾選累積邏輯 (支援 4 位家人各自打勾/取消，不覆蓋他人紀錄) ---
   const toggleChecklist = (type, category, idx) => {
+    const updateCategoryItems = (items) =>
+      items.map((item, i) => {
+        if (i !== idx) return item;
+        const currentList = getCheckedMembers(item);
+        const alreadyCheckedByMe = currentList.includes(currentMember);
+        const nextList = alreadyCheckedByMe
+          ? currentList.filter(m => m !== currentMember)
+          : [...currentList, currentMember];
+        // 依 FAMILY_MEMBERS 順序排列標籤，畫面更整齊
+        const orderedList = FAMILY_MEMBERS.filter(m => nextList.includes(m));
+        return {
+          ...item,
+          checked: orderedList.length > 0,
+          checkedByList: orderedList,
+          checkedBy: orderedList[orderedList.length - 1] || ''
+        };
+      });
+
     if (type === 'departure') {
       const updated = {
         ...departureList,
-        [category]: departureList[category].map((item, i) => {
-          if (i !== idx) return item;
-          const nextChecked = !item.checked;
-          return {
-            ...item,
-            checked: nextChecked,
-            checkedBy: nextChecked ? currentMember : ''
-          };
-        })
+        [category]: updateCategoryItems(departureList[category] || [])
       };
       setDepartureList(updated);
       saveData('departureList', updated, 'okinawa_departure');
     } else {
       const updated = {
         ...luggageList,
-        [category]: luggageList[category].map((item, i) => {
-          if (i !== idx) return item;
-          const nextChecked = !item.checked;
-          return {
-            ...item,
-            checked: nextChecked,
-            checkedBy: nextChecked ? currentMember : ''
-          };
-        })
+        [category]: updateCategoryItems(luggageList[category] || [])
       };
       setLuggageList(updated);
       saveData('luggageList', updated, 'okinawa_luggage');
@@ -1047,7 +1062,7 @@ export default function App() {
   let completedDeparture = 0;
   Object.values(departureList).forEach(cat => {
     totalDeparture += cat.length;
-    completedDeparture += cat.filter(item => item.checked).length;
+    completedDeparture += cat.filter(item => getCheckedMembers(item).length > 0 || item.checked).length;
   });
 
   const currentDayData = tripData.daily.find(d => d.day === selectedDay) || tripData.daily[0];
@@ -1847,7 +1862,7 @@ export default function App() {
               {checklistTab === 'departure' && (
                 <div className="space-y-5 animate-fade-in">
                   <div className="bg-[#EBF5EE] text-[#2F6B4A] p-3.5 rounded-xl text-sm font-bold text-center border border-[#D4E8DC]">
-                    已完成 {completedDeparture} / {totalDeparture} 項
+                    已完成 {completedDeparture} / {totalDeparture} 項 (可以多位家人各自打勾確認)
                   </div>
                   {DEPARTURE_CATEGORIES.map((category) => {
                     const items = departureList[category] || [];
@@ -1855,17 +1870,33 @@ export default function App() {
                       <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
                         <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
                         <div className="divide-y divide-[#F0EBE1]">
-                          {items.map((item, idx) => (
-                            <label key={`${category}-${idx}`} className="flex items-center justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('departure', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
-                                <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
-                              </div>
-                              {item.checked && item.checkedBy && (
-                                <MemberBadge name={item.checkedBy} prefix="✓ " />
-                              )}
-                            </label>
-                          ))}
+                          {items.map((item, idx) => {
+                            const checkedMembers = getCheckedMembers(item);
+                            const isCheckedByCurrent = checkedMembers.includes(currentMember);
+                            const hasAnyChecked = checkedMembers.length > 0;
+                            return (
+                              <label key={`${category}-${idx}`} className="flex items-start justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
+                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={isCheckedByCurrent}
+                                    onChange={() => toggleChecklist('departure', category, idx)}
+                                    className="w-5 h-5 mt-0.5 accent-[#4A5D54] rounded shrink-0"
+                                  />
+                                  <span className={`text-base leading-snug ${hasAnyChecked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>
+                                    {item.text}
+                                  </span>
+                                </div>
+                                {hasAnyChecked && (
+                                  <div className="flex flex-wrap justify-end gap-1 max-w-[48%] shrink-0">
+                                    {checkedMembers.map(member => (
+                                      <MemberBadge key={member} name={member} prefix="✓ " />
+                                    ))}
+                                  </div>
+                                )}
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
                     );
@@ -1875,23 +1906,42 @@ export default function App() {
 
               {checklistTab === 'luggage' && (
                 <div className="space-y-5 animate-fade-in">
+                  <div className="bg-[#EAF3FA] text-[#316999] p-3 rounded-xl text-xs font-bold text-center border border-[#D3E5F4]">
+                    💡 每位家人可各自打勾確認自己的隨身與行李物品（標籤會並排保留）
+                  </div>
                   {LUGGAGE_CATEGORIES.map((category) => {
                     const items = luggageList[category] || [];
                     return (
                       <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
                         <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
                         <div className="divide-y divide-[#F0EBE1]">
-                          {items.map((item, idx) => (
-                            <label key={`${category}-${idx}`} className="flex items-center justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('luggage', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
-                                <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
-                              </div>
-                              {item.checked && item.checkedBy && (
-                                <MemberBadge name={item.checkedBy} prefix="✓ " />
-                              )}
-                            </label>
-                          ))}
+                          {items.map((item, idx) => {
+                            const checkedMembers = getCheckedMembers(item);
+                            const isCheckedByCurrent = checkedMembers.includes(currentMember);
+                            const hasAnyChecked = checkedMembers.length > 0;
+                            return (
+                              <label key={`${category}-${idx}`} className="flex items-start justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
+                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={isCheckedByCurrent}
+                                    onChange={() => toggleChecklist('luggage', category, idx)}
+                                    className="w-5 h-5 mt-0.5 accent-[#4A5D54] rounded shrink-0"
+                                  />
+                                  <span className={`text-base leading-snug ${hasAnyChecked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>
+                                    {item.text}
+                                  </span>
+                                </div>
+                                {hasAnyChecked && (
+                                  <div className="flex flex-wrap justify-end gap-1 max-w-[48%] shrink-0">
+                                    {checkedMembers.map(member => (
+                                      <MemberBadge key={member} name={member} prefix="✓ " />
+                                    ))}
+                                  </div>
+                                )}
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
                     );

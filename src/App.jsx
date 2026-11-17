@@ -38,13 +38,33 @@ try {
   console.warn("Firebase 初始化略過，將使用本機模式:", err);
 }
 
-// --- 4 位家人 Email 白名單（請替換為您與家人的真實 Gmail）---
+// --- 4 位家人 Email 白名單 ---
 const ALLOWED_EMAILS = [
-  "family1@gmail.com",
-  "family2@gmail.com",
-  "family3@gmail.com",
-  "family4@gmail.com"
+  "lovepeace0212@gmail.com",
+  "amanda0091@gmail.com",
+  "joe.lom122@gmail.com",
+  "hsunuan@gmail.com"
 ];
+
+// 判斷是否為開發/預覽沙盒環境（在正式部署的 Vercel / Firebase 網址上必定為 false，確保 100% 門禁安全）
+const isSandboxPreview = (() => {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname || '';
+  const proto = window.location.protocol || '';
+  if (host.endsWith('.vercel.app') || host.endsWith('.web.app') || host.endsWith('.firebaseapp.com')) {
+    return false;
+  }
+  return (
+    !host ||
+    host === 'localhost' ||
+    host.includes('usercontent.goog') ||
+    host.includes('google') ||
+    host.includes('webcontainer') ||
+    proto === 'about:' ||
+    proto === 'blob:' ||
+    proto === 'data:'
+  );
+})();
 
 // --- TRIP DATA ---
 const tripData = {
@@ -534,7 +554,7 @@ const CATEGORY_COLORS = {
   '購物': '#C75A22',
   '其他': '#8A857B'
 };
-const FAMILY_MEMBERS = ['共同公費', '家人A', '家人B', '家人C', '家人D'];
+const FAMILY_MEMBERS = ['本人', '老婆', '爸爸', '媽媽'];
 
 // --- CHECKLIST INITIAL DATA ---
 const initialDepartureList = {
@@ -559,6 +579,10 @@ const initialLuggageList = {
   "化妝包": [{ text: "保養品", checked: false }, { text: "海洋友善防曬乳", checked: false }, { text: "卸妝用品", checked: false }],
   "醫藥包": [{ text: "腸胃藥", checked: false }, { text: "止痛藥", checked: false }, { text: "暈車藥", checked: false }, { text: "OK繃", checked: false }]
 };
+
+// 固定分類顯示順序，避免雲端同步回傳物件鍵值重排導致項目亂跳
+const DEPARTURE_CATEGORIES = Object.keys(initialDepartureList);
+const LUGGAGE_CATEGORIES = Object.keys(initialLuggageList);
 
 const initialShoppingList = [
   { id: 1, text: "Royce 巧克力", checked: false },
@@ -641,10 +665,17 @@ const OkinawaRegionMap = ({ activeRegion }) => (
 // --- MAIN APP COMPONENT ---
 export default function App() {
   // --- AUTH & SYNC STATE ---
-  const [user, setUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState(() => (isSandboxPreview ? { email: 'preview@local', isPreview: true } : null));
+  const [authLoading, setAuthLoading] = useState(() => !isSandboxPreview);
   const [authError, setAuthError] = useState('');
   const [cloudConnected, setCloudConnected] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  // 偵測是否為 LINE / FB / IG 等內建瀏覽器
+  const isInAppBrowser = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Line|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
+  }, []);
 
   // --- NAVIGATION & UI STATE ---
   const [activeTab, setActiveTab] = useState('overview');
@@ -656,7 +687,7 @@ export default function App() {
   // --- EXPENSES STATE ---
   const [expenses, setExpenses] = useState(() => getSavedState('okinawa_expenses', []));
   const [isAddingExpense, setIsAddingExpense] = useState(false);
-  const [newExpense, setNewExpense] = useState({ amount: '', category: '飲食', desc: '', day: 1, payer: '共同公費', receiptImg: '' });
+  const [newExpense, setNewExpense] = useState({ amount: '', category: '飲食', desc: '', day: 1, payer: '本人', receiptImg: '' });
   const [exchangeRate, setExchangeRate] = useState(0.215);
   const [calcJpy, setCalcJpy] = useState('1000');
   const [chartType, setChartType] = useState('trend'); // 'trend' | 'pie'
@@ -679,16 +710,23 @@ export default function App() {
     return diffDays > 0 ? diffDays : 0;
   }, []);
 
-  // --- 監聽 Firebase 登入狀態 ---
+  // --- 監聽 Firebase 登入狀態 (自動忽略大小寫與前後空白) ---
   useEffect(() => {
+    if (isSandboxPreview) {
+      setAuthLoading(false);
+      return;
+    }
     if (!auth) {
       setAuthLoading(false);
       return;
     }
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
-        const isDefaultPlaceholder = ALLOWED_EMAILS[0] === "family1@gmail.com";
-        if (isDefaultPlaceholder || ALLOWED_EMAILS.includes(currentUser.email)) {
+        const normalizedAllowed = ALLOWED_EMAILS.map(e => e.trim().toLowerCase());
+        const userEmail = (currentUser.email || '').trim().toLowerCase();
+        const isDefaultPlaceholder = normalizedAllowed[0] === "family1@gmail.com";
+
+        if (isDefaultPlaceholder || normalizedAllowed.includes(userEmail)) {
           setUser(currentUser);
           setAuthError('');
         } else {
@@ -706,7 +744,7 @@ export default function App() {
 
   // --- 監聽 Firestore 即時同步 ---
   useEffect(() => {
-    if (!db || !user) {
+    if (!db || !user || user.isPreview) {
       setCloudConnected(false);
       return;
     }
@@ -742,13 +780,24 @@ export default function App() {
     } catch (e) {
       console.warn("LocalStorage 寫入失敗:", e);
     }
-    if (db && user && cloudConnected) {
+    if (db && user && !user.isPreview && cloudConnected) {
       try {
         const tripDocRef = doc(db, "trips", "okinawa-2027");
         await setDoc(tripDocRef, { [field]: value }, { merge: true });
       } catch (e) {
         console.warn("雲端寫入失敗，已保存於本機:", e);
       }
+    }
+  };
+
+  // --- 複製目前網址 (給 LINE 內建瀏覽器使用者) ---
+  const handleCopyUrl = () => {
+    try {
+      navigator.clipboard.writeText(window.location.href);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2500);
+    } catch (e) {
+      console.warn("複製網址失敗", e);
     }
   };
 
@@ -761,13 +810,21 @@ export default function App() {
     }
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
     } catch (err) {
-      setAuthError('登入失敗，請確認 Firebase 網域已授權或稍後再試。');
+      if (err.code === 'auth/popup-blocked') {
+        setAuthError('瀏覽器阻擋了登入視窗，請允許彈出視窗，或改用 Safari / Chrome 開啟。');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setAuthError('您取消了登入，請再試一次。');
+      } else {
+        setAuthError('登入失敗，請改用手機內建的 Safari 或 Chrome 瀏覽器開啟此網頁再登入。');
+      }
     }
   };
 
   const handleLogout = async () => {
+    if (user?.isPreview) return;
     if (auth) {
       try {
         await signOut(auth);
@@ -803,7 +860,7 @@ export default function App() {
   const payerTotals = useMemo(() => {
     const map = {};
     expenses.forEach(e => {
-      const p = e.payer || '共同公費';
+      const p = e.payer || '本人';
       map[p] = (map[p] || 0) + Number(e.amount || 0);
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
@@ -856,7 +913,7 @@ export default function App() {
     setExpenses(updated);
     saveData('expenses', updated, 'okinawa_expenses');
     setIsAddingExpense(false);
-    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: '共同公費', receiptImg: '' });
+    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: '本人', receiptImg: '' });
   };
 
   const deleteExpense = (id) => {
@@ -917,7 +974,7 @@ export default function App() {
   const currentOverviewData = tripData.overview.find(d => d.day === selectedDay) || tripData.overview[0];
   const displayedSpots = isRainyMode && currentDayData.rainySpots ? currentDayData.rainySpots : currentDayData.spots;
 
-  // --- 登入門禁畫面 (第三道鎖) ---
+  // --- 登入門禁畫面 (正式網址上 100% 啟用第三道鎖) ---
   if (authLoading) {
     return (
       <div className="w-full max-w-md mx-auto h-screen bg-[#F9F8F5] flex items-center justify-center">
@@ -935,12 +992,37 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-bold text-[#2D2A26] tracking-wider">沖繩之旅</h1>
           <p className="text-sm text-[#8A857B] font-bold mt-1">Winter 2027 • 6天5夜 家人專屬</p>
-          <p className="text-sm text-[#6B6554] mt-5 leading-relaxed">
-            為了保護家人的行程、記帳與重要證件連結，請使用授權的 Google 帳號登入。
-          </p>
+
+          {/* 偵測到 LINE / FB 等內建瀏覽器時顯示醒目引導 */}
+          {isInAppBrowser ? (
+            <div className="mt-5 bg-[#FDF2E9] border-2 border-[#F4E0D1] rounded-2xl p-4 text-left space-y-2.5">
+              <div className="flex items-center gap-2 text-[#C75A22] font-bold text-base">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                請改用 Safari 或 Chrome 開啟
+              </div>
+              <p className="text-sm text-[#6B6554] leading-relaxed">
+                您目前正使用 <strong>LINE 內建瀏覽器</strong>，Google 安全機制會阻擋登入。
+              </p>
+              <div className="bg-white rounded-xl p-3 text-sm text-[#2D2A26] font-bold space-y-1.5 border border-[#F4E0D1]">
+                <p>1. 點擊右下角「分享圖示」或「三個點 (⋮)」</p>
+                <p>2. 選擇「使用預設瀏覽器開啟 (Safari / Chrome)」</p>
+              </div>
+              <button
+                onClick={handleCopyUrl}
+                className="w-full mt-2 bg-[#C75A22] text-white font-bold py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-1.5 active:bg-[#A64818]"
+              >
+                {copiedUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                {copiedUrl ? '已複製網址！請貼到 Safari / Chrome' : '複製網址貼到瀏覽器'}
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-[#6B6554] mt-5 leading-relaxed">
+              為了保護家人的行程、記帳與重要證件連結，請使用授權的 Google 帳號登入。
+            </p>
+          )}
 
           {authError && (
-            <div className="mt-4 bg-[#FCECEE] text-[#B93A49] text-xs font-bold p-3 rounded-xl border border-[#F2D7D9]">
+            <div className="mt-4 bg-[#FCECEE] text-[#B93A49] text-xs font-bold p-3 rounded-xl border border-[#F2D7D9] leading-relaxed">
               {authError}
             </div>
           )}
@@ -951,22 +1033,28 @@ export default function App() {
           >
             <Shield className="w-5 h-5" /> 使用 Google 帳號登入
           </button>
+
+          {!isInAppBrowser && (
+            <p className="text-xs text-[#8A857B] mt-4">
+              💡 若無法登入，請確認使用 Safari 或 Chrome 開啟
+            </p>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-md mx-auto h-screen font-sans flex flex-col overflow-hidden shadow-2xl relative bg-[#F9F8F5]">
-      {/* HEADER */}
-      <header className="pt-10 pb-4 px-6 bg-white border-b border-[#EAE6DF] shadow-sm z-10 flex-shrink-0 flex justify-between items-center">
+    <div className="w-full max-w-md mx-auto h-screen h-[100dvh] font-sans flex flex-col overflow-hidden shadow-2xl relative bg-[#F9F8F5]">
+      {/* HEADER：上下留白一致 */}
+      <header className="py-3.5 px-5 bg-white border-b border-[#EAE6DF] shadow-sm z-10 flex-shrink-0 flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-wider text-[#2D2A26]">沖繩之旅</h1>
+          <h1 className="text-2xl font-bold tracking-wider text-[#2D2A26] leading-tight">沖繩之旅</h1>
           <p className="text-sm text-[#8A857B] mt-0.5 font-bold tracking-widest">Winter 2027 • 6天5夜</p>
         </div>
         <div className="flex items-center gap-2">
           <span
-            title={cloudConnected ? "雲端同步中" : "本機記憶模式"}
+            title={user?.isPreview ? "預覽模式" : cloudConnected ? "雲端同步中" : "本機記憶模式"}
             className={`px-2.5 py-1 rounded-full text-xs font-bold flex items-center gap-1 border ${
               cloudConnected
                 ? 'bg-[#EBF5EE] text-[#2F6B4A] border-[#D4E8DC]'
@@ -974,25 +1062,27 @@ export default function App() {
             }`}
           >
             {cloudConnected ? <Cloud className="w-3.5 h-3.5" /> : <CloudOff className="w-3.5 h-3.5" />}
-            {cloudConnected ? '同步' : '本機'}
+            {user?.isPreview ? '預覽' : cloudConnected ? '同步' : '本機'}
           </span>
-          <button
-            onClick={handleLogout}
-            title="登出"
-            className="p-2 rounded-full bg-[#FAF9F7] border border-[#EAE6DF] text-[#8A857B] active:bg-[#F2EFE9]"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          {!user?.isPreview && (
+            <button
+              onClick={handleLogout}
+              title="登出"
+              className="p-2 rounded-full bg-[#FAF9F7] border border-[#EAE6DF] text-[#8A857B] active:bg-[#F2EFE9]"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 overflow-y-auto hide-scrollbar pb-28">
+      {/* MAIN CONTENT：採 flex-1 min-h-0 結構，確保各分頁子標籤固定且都能順利滑到最底 */}
+      <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* ================= OVERVIEW TAB ================= */}
         {activeTab === 'overview' && (
-          <div className="animate-fade-in flex flex-col pb-6">
+          <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar animate-fade-in flex flex-col pb-10">
             {/* Hero Section */}
-            <div className="relative w-full h-44 bg-gradient-to-b from-[#A1C9F2] to-[#E3F2FA] overflow-hidden flex flex-col justify-center items-center pb-6">
+            <div className="relative w-full h-44 bg-gradient-to-b from-[#A1C9F2] to-[#E3F2FA] overflow-hidden flex flex-col justify-center items-center pb-6 flex-shrink-0">
               <div className="bg-white/95 px-6 py-3 rounded-full text-[#2D2A26] font-bold text-base shadow-sm z-10 flex items-center gap-2 mt-2">
                 🐶 帶著好心情準備出發！
               </div>
@@ -1043,22 +1133,22 @@ export default function App() {
             </div>
 
             {/* Cards Stack - Ordered per user request */}
-            <div className="px-5 mt-7 space-y-4">
+            <div className="px-4 mt-7 space-y-4">
               {/* 1. SOS 緊急方框 (最上方) */}
               <button
                 onClick={() => setShowSOSModal(true)}
-                className="w-full bg-[#FCECEE] rounded-2xl p-5 border-2 border-[#F2D7D9] flex justify-between items-center shadow-sm active:scale-95 transition-transform text-left"
+                className="w-full bg-[#FCECEE] rounded-2xl p-4 border-2 border-[#F2D7D9] flex justify-between items-center shadow-sm active:scale-95 transition-transform text-left"
               >
-                <div className="flex items-center gap-4">
-                  <div className="bg-[#B93A49] rounded-full p-3 text-white shadow-sm">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="bg-[#B93A49] rounded-full p-2.5 text-white shadow-sm shrink-0">
                     <ShieldAlert className="w-6 h-6" />
                   </div>
-                  <div>
-                    <div className="text-lg text-[#B93A49] font-bold tracking-wide">SOS 緊急聯絡資訊</div>
-                    <div className="text-sm text-[#8F2C37] mt-0.5 font-medium">日本報警 110 • 救護 119 • 駐日處 • 飯店電話</div>
+                  <div className="min-w-0">
+                    <div className="text-base text-[#B93A49] font-bold tracking-wide whitespace-nowrap">SOS 緊急聯絡資訊</div>
+                    <div className="text-xs text-[#8F2C37] mt-0.5 font-medium truncate">日本報警 110 • 救護 119 • 駐日處 • 飯店</div>
                   </div>
                 </div>
-                <ChevronRight className="w-6 h-6 text-[#B93A49]" />
+                <ChevronRight className="w-5 h-5 text-[#B93A49] shrink-0" />
               </button>
 
               {/* 2. 入境文件方框 (SOS 下方) */}
@@ -1066,40 +1156,40 @@ export default function App() {
                 href="https://services.digital.go.jp/zh-cmn-hant/visit-japan-web/"
                 target="_blank"
                 rel="noreferrer"
-                className="bg-white rounded-2xl p-5 border border-[#EAE6DF] flex justify-between items-center shadow-sm active:scale-95 transition-transform"
+                className="bg-white rounded-2xl p-4 border border-[#EAE6DF] flex justify-between items-center shadow-sm active:scale-95 transition-transform"
               >
-                <div className="flex items-center gap-4">
-                  <div className="bg-[#FCECEE] border border-[#F2D7D9] rounded-full p-3">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="bg-[#FCECEE] border border-[#F2D7D9] rounded-full p-2.5 shrink-0">
                     <FileCheck2 className="w-6 h-6 text-[#B93A49]" />
                   </div>
-                  <div>
-                    <div className="text-lg text-[#2D2A26] font-bold tracking-wide">入境文件</div>
-                    <div className="text-sm text-[#8A857B] mt-0.5 font-medium">免簽 90 天 • Visit Japan Web</div>
+                  <div className="min-w-0">
+                    <div className="text-base text-[#2D2A26] font-bold tracking-wide whitespace-nowrap">入境文件</div>
+                    <div className="text-xs text-[#8A857B] mt-0.5 font-medium truncate">免簽 90 天 • Visit Japan Web</div>
                   </div>
                 </div>
-                <ChevronRight className="w-6 h-6 text-[#DCD6CA]" />
+                <ChevronRight className="w-5 h-5 text-[#DCD6CA] shrink-0" />
               </a>
 
-              {/* 3. 兩欄網格：護照、機票、保險、駕照、出發清單、日語手冊 */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* 3. 兩欄網格：護照、機票、保險、駕照、出發清單、日語手冊（精準排版不溢出、不換行） */}
+              <div className="grid grid-cols-2 gap-3">
                 {/* 護照 */}
                 <a
                   href="https://drive.google.com/drive/folders/1gaZ12YAiPA6u4uUJw8lNPyC3Ek76_bxI?usp=drive_link"
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-white rounded-2xl p-5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between"
+                  className="bg-white rounded-2xl p-3.5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="bg-[#FCECEE] p-2.5 rounded-full">
-                      <BookOpen className="w-5 h-5 text-[#B93A49]" />
+                  <div className="flex items-center gap-2 mb-2.5 min-w-0">
+                    <div className="bg-[#FCECEE] p-2 rounded-full shrink-0">
+                      <BookOpen className="w-4 h-4 text-[#B93A49]" />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-[#B93A49] font-bold tracking-wider">PASSPORT</div>
-                      <div className="text-base text-[#2D2A26] font-bold">護照資訊</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-[#B93A49] font-bold tracking-wide whitespace-nowrap">PASSPORT</div>
+                      <div className="text-[15px] text-[#2D2A26] font-bold whitespace-nowrap leading-tight">護照資訊</div>
                     </div>
                   </div>
-                  <div className="text-sm text-[#6B6554] font-bold my-2 text-center">4 位家人護照影本</div>
-                  <div className="text-xs text-[#8A857B] pt-3 border-t border-dashed border-[#EAE6DF] font-bold text-center">
+                  <div className="text-xs text-[#6B6554] font-bold my-2 text-center whitespace-nowrap">4 位家人護照影本</div>
+                  <div className="text-[11px] text-[#8A857B] pt-2.5 border-t border-dashed border-[#EAE6DF] font-bold text-center whitespace-nowrap">
                     點擊開啟雲端
                   </div>
                 </a>
@@ -1109,23 +1199,23 @@ export default function App() {
                   href="https://drive.google.com/drive/folders/1sqjviwF7gt85Ajwfi1USIeBGLnwXV_J4?usp=drive_link"
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-white rounded-2xl p-5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between"
+                  className="bg-white rounded-2xl p-3.5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="bg-[#EAF3FA] p-2.5 rounded-full">
-                      <Plane className="w-5 h-5 text-[#316999]" />
+                  <div className="flex items-center gap-2 mb-2.5 min-w-0">
+                    <div className="bg-[#EAF3FA] p-2 rounded-full shrink-0">
+                      <Plane className="w-4 h-4 text-[#316999]" />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-[#316999] font-bold tracking-wider">BOARDING</div>
-                      <div className="text-base text-[#2D2A26] font-bold">機票資訊</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-[#316999] font-bold tracking-wide whitespace-nowrap">BOARDING</div>
+                      <div className="text-[15px] text-[#2D2A26] font-bold whitespace-nowrap leading-tight">機票資訊</div>
                     </div>
                   </div>
-                  <div className="flex justify-between items-center text-[#2D2A26] font-bold text-base my-2 px-1">
+                  <div className="flex justify-center items-center gap-2 text-[#2D2A26] font-bold text-sm my-2 whitespace-nowrap">
                     <span>台灣</span>
-                    <Plane className="w-4 h-4 text-[#8A857B]" />
+                    <Plane className="w-3.5 h-3.5 text-[#8A857B] shrink-0" />
                     <span>沖繩</span>
                   </div>
-                  <div className="text-xs text-[#8A857B] pt-3 border-t border-dashed border-[#EAE6DF] font-bold text-center">
+                  <div className="text-[11px] text-[#8A857B] pt-2.5 border-t border-dashed border-[#EAE6DF] font-bold text-center whitespace-nowrap">
                     點擊開啟雲端
                   </div>
                 </a>
@@ -1135,19 +1225,19 @@ export default function App() {
                   href="https://drive.google.com/drive/folders/1o-sro3vPaht7UM415UNes-T_SATU_fGI?usp=drive_link"
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-white rounded-2xl p-5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between"
+                  className="bg-white rounded-2xl p-3.5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="bg-[#EBF5EE] p-2.5 rounded-full">
-                      <Shield className="w-5 h-5 text-[#2F6B4A]" />
+                  <div className="flex items-center gap-2 mb-2.5 min-w-0">
+                    <div className="bg-[#EBF5EE] p-2 rounded-full shrink-0">
+                      <Shield className="w-4 h-4 text-[#2F6B4A]" />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-[#2F6B4A] font-bold tracking-wider">INSURANCE</div>
-                      <div className="text-base text-[#2D2A26] font-bold">保險單據</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-[#2F6B4A] font-bold tracking-wide whitespace-nowrap">INSURANCE</div>
+                      <div className="text-[15px] text-[#2D2A26] font-bold whitespace-nowrap leading-tight">保險單據</div>
                     </div>
                   </div>
-                  <div className="text-sm text-[#6B6554] font-bold my-2 text-center">旅平險與不便險</div>
-                  <div className="text-xs text-[#8A857B] pt-3 border-t border-dashed border-[#EAE6DF] font-bold text-center">
+                  <div className="text-xs text-[#6B6554] font-bold my-2 text-center whitespace-nowrap">旅平險與不便險</div>
+                  <div className="text-[11px] text-[#8A857B] pt-2.5 border-t border-dashed border-[#EAE6DF] font-bold text-center whitespace-nowrap">
                     點擊開啟雲端
                   </div>
                 </a>
@@ -1157,19 +1247,19 @@ export default function App() {
                   href="https://drive.google.com/drive/folders/1xweNEY4e6jgzwSF3Bma4-VOaQjlbhyXa?usp=drive_link"
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-white rounded-2xl p-5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between"
+                  className="bg-white rounded-2xl p-3.5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="bg-[#FDF2E9] p-2.5 rounded-full">
-                      <Car className="w-5 h-5 text-[#C75A22]" />
+                  <div className="flex items-center gap-2 mb-2.5 min-w-0">
+                    <div className="bg-[#FDF2E9] p-2 rounded-full shrink-0">
+                      <Car className="w-4 h-4 text-[#C75A22]" />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-[#C75A22] font-bold tracking-wider">LICENSE</div>
-                      <div className="text-base text-[#2D2A26] font-bold">駕照譯本</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-[#C75A22] font-bold tracking-wide whitespace-nowrap">LICENSE</div>
+                      <div className="text-[15px] text-[#2D2A26] font-bold whitespace-nowrap leading-tight">駕照譯本</div>
                     </div>
                   </div>
-                  <div className="text-sm text-[#6B6554] font-bold my-2 text-center">駕照與日文譯本</div>
-                  <div className="text-xs text-[#8A857B] pt-3 border-t border-dashed border-[#EAE6DF] font-bold text-center">
+                  <div className="text-xs text-[#6B6554] font-bold my-2 text-center whitespace-nowrap">駕照與日文譯本</div>
+                  <div className="text-[11px] text-[#8A857B] pt-2.5 border-t border-dashed border-[#EAE6DF] font-bold text-center whitespace-nowrap">
                     點擊開啟雲端
                   </div>
                 </a>
@@ -1177,22 +1267,22 @@ export default function App() {
                 {/* 出發清單 */}
                 <div
                   onClick={() => { setActiveTab('tools'); setChecklistTab('departure'); }}
-                  className="bg-[#FAF9F7] rounded-2xl p-5 border border-[#DCD6CA] shadow-sm cursor-pointer active:scale-95 transition-transform flex flex-col justify-between"
+                  className="bg-[#FAF9F7] rounded-2xl p-3.5 border border-[#DCD6CA] shadow-sm cursor-pointer active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 mb-2">
-                    <div className="border-[1.5px] border-[#4A5D54] rounded-full p-2 bg-[#EBF5EE]">
-                      <CheckCircle2 className="w-5 h-5 text-[#4A5D54]" />
+                  <div className="flex items-center gap-2 mb-2 min-w-0">
+                    <div className="border-[1.5px] border-[#4A5D54] rounded-full p-1.5 bg-[#EBF5EE] shrink-0">
+                      <CheckCircle2 className="w-4 h-4 text-[#4A5D54]" />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-[#4A5D54] font-bold tracking-wider">TO DO</div>
-                      <div className="text-base text-[#2D2A26] font-bold">出發清單</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-[#4A5D54] font-bold tracking-wide whitespace-nowrap">TO DO</div>
+                      <div className="text-[15px] text-[#2D2A26] font-bold whitespace-nowrap leading-tight">出發清單</div>
                     </div>
                   </div>
-                  <div className="text-2xl text-[#4A5D54] font-bold my-1 text-center">
+                  <div className="text-xl text-[#4A5D54] font-bold my-1 text-center whitespace-nowrap">
                     {completedDeparture}
-                    <span className="text-sm text-[#8A857B] font-bold ml-1">/ {totalDeparture} 項</span>
+                    <span className="text-xs text-[#8A857B] font-bold ml-1">/ {totalDeparture} 項</span>
                   </div>
-                  <div className="text-xs text-[#4A5D54] pt-3 border-t border-dashed border-[#DCD6CA] font-bold text-center">
+                  <div className="text-[11px] text-[#4A5D54] pt-2.5 border-t border-dashed border-[#DCD6CA] font-bold text-center whitespace-nowrap">
                     點擊檢查進度
                   </div>
                 </div>
@@ -1202,19 +1292,19 @@ export default function App() {
                   href="https://drive.google.com/drive/folders/1yuvcuEuMwgZKcPUSmu6pGMqx9Pwh97uV?usp=drive_link"
                   target="_blank"
                   rel="noreferrer"
-                  className="bg-white rounded-2xl p-5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between"
+                  className="bg-white rounded-2xl p-3.5 border border-[#EAE6DF] shadow-sm active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
                 >
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className="bg-[#F3EEF8] p-2.5 rounded-full">
-                      <CreditCard className="w-5 h-5 text-[#625170]" />
+                  <div className="flex items-center gap-2 mb-2.5 min-w-0">
+                    <div className="bg-[#F3EEF8] p-2 rounded-full shrink-0">
+                      <CreditCard className="w-4 h-4 text-[#625170]" />
                     </div>
-                    <div>
-                      <div className="text-[10px] text-[#625170] font-bold tracking-wider">JAPANESE</div>
-                      <div className="text-base text-[#2D2A26] font-bold">日語手冊</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-[#625170] font-bold tracking-wide whitespace-nowrap">JAPANESE</div>
+                      <div className="text-[15px] text-[#2D2A26] font-bold whitespace-nowrap leading-tight">日語手冊</div>
                     </div>
                   </div>
-                  <div className="text-sm text-[#6B6554] font-bold my-2 text-center">實用旅遊日語</div>
-                  <div className="text-xs text-[#8A857B] pt-3 border-t border-dashed border-[#EAE6DF] font-bold text-center">
+                  <div className="text-xs text-[#6B6554] font-bold my-2 text-center whitespace-nowrap">實用旅遊日語</div>
+                  <div className="text-[11px] text-[#8A857B] pt-2.5 border-t border-dashed border-[#EAE6DF] font-bold text-center whitespace-nowrap">
                     點擊開啟雲端
                   </div>
                 </a>
@@ -1225,9 +1315,9 @@ export default function App() {
 
         {/* ================= DAILY / ITINERARY TAB ================= */}
         {activeTab === 'daily' && (
-          <div className="animate-fade-in flex flex-col h-full">
-            {/* Sub-tabs: 行程總覽 / 行程細節 */}
-            <div className="flex bg-white border-b border-[#EAE6DF] px-5 pt-2 sticky top-0 z-10">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {/* 固定頂部子分頁：行程總覽 / 行程細節 */}
+            <div className="flex-shrink-0 flex bg-white border-b border-[#EAE6DF] px-5 pt-2 z-10">
               <button
                 onClick={() => setItinerarySubTab('overview')}
                 className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${
@@ -1246,9 +1336,9 @@ export default function App() {
               </button>
             </div>
 
-            {/* 行程總覽 */}
+            {/* 行程總覽 (獨立捲動區) */}
             {itinerarySubTab === 'overview' && (
-              <div className="p-5 space-y-5">
+              <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10 space-y-5 animate-fade-in">
                 <OkinawaRegionMap activeRegion={currentOverviewData.region} />
 
                 <div className="relative pl-4 space-y-4 before:content-[''] before:absolute before:left-[19px] before:top-4 before:bottom-4 before:w-0.5 before:bg-[#DCD6CA]">
@@ -1290,15 +1380,15 @@ export default function App() {
               </div>
             )}
 
-            {/* 行程細節 */}
+            {/* 行程細節 (天數切換列固定 + 內容獨立捲動) */}
             {itinerarySubTab === 'detail' && (
-              <div className="flex flex-col">
-                <div className="flex overflow-x-auto gap-2.5 px-5 py-3.5 hide-scrollbar border-b border-[#EAE6DF] bg-[#FAF9F7]">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div className="flex-shrink-0 flex overflow-x-auto gap-2.5 px-5 py-3 hide-scrollbar border-b border-[#EAE6DF] bg-[#FAF9F7]">
                   {tripData.daily.map(d => (
                     <button
                       key={d.day}
                       onClick={() => setSelectedDay(d.day)}
-                      className={`flex-shrink-0 flex flex-col items-center justify-center w-[68px] h-[68px] rounded-2xl transition-all border ${
+                      className={`flex-shrink-0 flex flex-col items-center justify-center w-[64px] h-[62px] rounded-2xl transition-all border ${
                         selectedDay === d.day
                           ? 'bg-[#4A5D54] border-[#4A5D54] text-white shadow-md scale-105'
                           : 'bg-white border-[#EAE6DF] text-[#6B6554]'
@@ -1310,7 +1400,7 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="p-5 space-y-5">
+                <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10 space-y-5 animate-fade-in">
                   {/* 天氣 & 雨天備案切換 */}
                   <div className="bg-gradient-to-r from-[#EBF2F3] to-[#F5F7F7] p-4 rounded-2xl border border-[#D9E3E6] shadow-sm space-y-3">
                     <div className="flex items-center justify-between">
@@ -1417,7 +1507,7 @@ export default function App() {
 
         {/* ================= EXPENSES / WALLET TAB ================= */}
         {activeTab === 'expenses' && (
-          <div className="p-5 space-y-5 animate-fade-in">
+          <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10 space-y-5 animate-fade-in">
             {/* 即時匯率換算機 */}
             <div className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm">
               <div className="flex justify-between items-center mb-3">
@@ -1659,55 +1749,62 @@ export default function App() {
 
         {/* ================= TOOLS / CHECKLIST TAB ================= */}
         {activeTab === 'tools' && (
-          <div className="animate-fade-in flex flex-col h-full bg-[#F9F8F5]">
-            <div className="flex bg-white border-b border-[#EAE6DF] px-4 pt-2 sticky top-0 z-10">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#F9F8F5]">
+            {/* 固定頂部子分頁：出發清單 / 行李打包 / 購物清單 */}
+            <div className="flex-shrink-0 flex bg-white border-b border-[#EAE6DF] px-4 pt-2 z-10">
               <button onClick={() => setChecklistTab('departure')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'departure' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>出發清單</button>
               <button onClick={() => setChecklistTab('luggage')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'luggage' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>行李打包</button>
               <button onClick={() => setChecklistTab('shopping')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'shopping' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>購物清單</button>
             </div>
 
-            <div className="p-5 flex-1">
+            <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10">
               {checklistTab === 'departure' && (
-                <div className="space-y-5">
+                <div className="space-y-5 animate-fade-in">
                   <div className="bg-[#EBF5EE] text-[#2F6B4A] p-3.5 rounded-xl text-sm font-bold text-center border border-[#D4E8DC]">
                     已完成 {completedDeparture} / {totalDeparture} 項
                   </div>
-                  {Object.entries(departureList).map(([category, items]) => (
-                    <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
-                      <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
-                      <div className="divide-y divide-[#F0EBE1]">
-                        {items.map((item, idx) => (
-                          <label key={idx} className="flex items-center px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                            <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('departure', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded" />
-                            <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
-                          </label>
-                        ))}
+                  {DEPARTURE_CATEGORIES.map((category) => {
+                    const items = departureList[category] || [];
+                    return (
+                      <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
+                        <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
+                        <div className="divide-y divide-[#F0EBE1]">
+                          {items.map((item, idx) => (
+                            <label key={`${category}-${idx}`} className="flex items-center px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
+                              <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('departure', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
+                              <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               {checklistTab === 'luggage' && (
-                <div className="space-y-5">
-                  {Object.entries(luggageList).map(([category, items]) => (
-                    <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
-                      <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
-                      <div className="divide-y divide-[#F0EBE1]">
-                        {items.map((item, idx) => (
-                          <label key={idx} className="flex items-center px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                            <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('luggage', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded" />
-                            <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
-                          </label>
-                        ))}
+                <div className="space-y-5 animate-fade-in">
+                  {LUGGAGE_CATEGORIES.map((category) => {
+                    const items = luggageList[category] || [];
+                    return (
+                      <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
+                        <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
+                        <div className="divide-y divide-[#F0EBE1]">
+                          {items.map((item, idx) => (
+                            <label key={`${category}-${idx}`} className="flex items-center px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
+                              <input type="checkbox" checked={item.checked} onChange={() => toggleChecklist('luggage', category, idx)} className="w-5 h-5 accent-[#4A5D54] rounded shrink-0" />
+                              <span className={`text-base ${item.checked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>{item.text}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
               {checklistTab === 'shopping' && (
-                <div className="space-y-4">
+                <div className="space-y-4 animate-fade-in">
                   <form onSubmit={addShoppingItem} className="flex gap-2">
                     <input
                       type="text"
@@ -1792,8 +1889,8 @@ export default function App() {
         </div>
       )}
 
-      {/* BOTTOM TAB BAR */}
-      <nav className="flex-shrink-0 bg-white border-t border-[#EAE6DF] pt-2.5 px-4 pb-5 flex justify-around items-center z-20 absolute bottom-0 w-full h-[82px] shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
+      {/* BOTTOM TAB BAR：改為 flex-shrink-0 獨立佔位，絕不遮擋任何頁面最底部 */}
+      <nav className="flex-shrink-0 bg-white border-t border-[#EAE6DF] pt-2.5 px-4 pb-5 flex justify-around items-center z-20 w-full shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
         <button onClick={() => setActiveTab('overview')} className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${activeTab === 'overview' ? 'text-[#4A5D54]' : 'text-[#A09C94]'}`}>
           <Home className="w-6 h-6 mb-1" />
           <span className="text-sm font-bold tracking-wider">總覽</span>

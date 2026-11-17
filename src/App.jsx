@@ -5,7 +5,8 @@ import {
   AlertCircle, FileText, Coffee, Plus, Trash2, Receipt, Car, X, Tag,
   Home, List, CheckSquare, Sun, CloudRain, Users, FileCheck2, ChevronRight, CheckCircle2,
   ShieldAlert, ArrowRightLeft, Copy, Check, Camera, PieChart as PieChartIcon, BarChart3,
-  Umbrella, Compass, LogOut, Lock, Shield, BookOpen, CreditCard, Cloud, CloudOff, UserCheck
+  Umbrella, Compass, LogOut, Lock, Shield, BookOpen, CreditCard, Cloud, CloudOff, UserCheck,
+  Gift, Sparkles
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -564,8 +565,9 @@ const tripData = {
     }
   ],
   emergency: [
-    { name: "日本警察局 (報案 / 交通事故)", phone: "110", desc: "24小時緊急報案" },
+    { name: "日本警察局 (報案 / 交通事故)", phone: "110", desc: "24小時緊急報案（車禍必報警才能出險）" },
     { name: "日本救護車 / 消防車", phone: "119", desc: "緊急醫療與火警" },
+    { name: "海上緊急求助", phone: "118", desc: "海邊或水上活動緊急求助" },
     { name: "台北駐日經濟文化代表處 (那霸分處)", phone: "+81-98-862-7008", desc: "護照遺失或急難救助" },
     { name: "ORIX 租車 (那霸美榮橋站前店)", phone: "+81-98-869-0543", desc: "還車與車輛狀況諮詢" },
     { name: "沖繩蒙特利水療度假酒店", phone: "+81-98-993-7111", desc: "Day 1-2 住宿 (恩納)" },
@@ -584,28 +586,129 @@ const CATEGORY_COLORS = {
   '其他': '#8A857B'
 };
 
-// --- CHECKLIST INITIAL DATA ---
+// --- 整合自試算表：出發清單 (核心確認清單 + 行前準備時間軸) ---
 const initialDepartureList = {
-  "機票": [{ text: "訂機票", checked: false, checkedByList: [] }, { text: "確認護照效期 6 個月以上", checked: false, checkedByList: [] }, { text: "預約機場接送", checked: false, checkedByList: [] }, { text: "截圖機票與飯店訂位單", checked: false, checkedByList: [] }, { text: "線上報到與劃位", checked: false, checkedByList: [] }],
-  "住宿": [{ text: "訂住宿", checked: false, checkedByList: [] }, { text: "填寫入住資料", checked: false, checkedByList: [] }],
-  "行程": [{ text: "熱門餐廳訂位", checked: false, checkedByList: [] }, { text: "門票預購", checked: false, checkedByList: [] }],
-  "保險": [{ text: "旅平險", checked: false, checkedByList: [] }, { text: "不便險", checked: false, checkedByList: [] }, { text: "海外醫療險", checked: false, checkedByList: [] }],
-  "網路": [{ text: "確認手機支援eSIM", checked: false, checkedByList: [] }, { text: "買eSIM或網卡", checked: false, checkedByList: [] }],
-  "付款換匯": [{ text: "選定海外回饋高的信用卡", checked: false, checkedByList: [] }, { text: "開通信用卡海外刷卡", checked: false, checkedByList: [] }, { text: "開通金融卡海外提款", checked: false, checkedByList: [] }, { text: "換匯", checked: false, checkedByList: [] }, { text: "了解退稅規定", checked: false, checkedByList: [] }, { text: "買當地交通卡", checked: false, checkedByList: [] }],
-  "入境文件": [{ text: "填寫 Visit Japan Web", checked: false, checkedByList: [] }],
-  "當地實用APP": [{ text: "地圖 (先下載離線地圖)", checked: false, checkedByList: [] }, { text: "翻譯", checked: false, checkedByList: [] }, { text: "叫車", checked: false, checkedByList: [] }, { text: "大眾運輸 / 火車", checked: false, checkedByList: [] }, { text: "手機設定 (旅遊App放首頁、清出容量)", checked: false, checkedByList: [] }]
+  "🚨 出發前核心確認 (隨身檢核)": [
+    { text: "中華民國護照正本", badge: "致命必備", meta: "實體護照(隨身)", note: "效期需在回程日起算6個月以上、無破損塗鴉", checked: false, checkedByList: [] },
+    { text: "台灣駕照正本", badge: "致命必備", meta: "駕駛人・隨身", note: "必須攜帶實體正本，無正本租車公司拒絕交車", checked: false, checkedByList: [] },
+    { text: "台灣駕照日文譯本", badge: "致命必備", meta: "A4紙本正本(隨身)", note: "監理所正式紙本，國際駕照在日本無效！", checked: false, checkedByList: [] },
+    { text: "Visit Japan Web (VJW) QR Code", badge: "致命必備", meta: "手機離線截圖/紙本", note: "含入境審查與海關申報兩組 QR，務必離線截圖", checked: false, checkedByList: [] },
+    { text: "日本上網 eSim / 實體 SIM 卡", badge: "極度重要", meta: "手機設定/退卡針", note: "eSim QR 備份同行者手機；實體卡備妥退卡針", checked: false, checkedByList: [] },
+    { text: "日幣現鈔 (現金)", badge: "極度重要", meta: "隨身皮夾分開存放", note: "建議準備 3~5 萬日幣(多換千円鈔)，小店停車場只收現", checked: false, checkedByList: [] },
+    { text: "海外高回饋信用卡 (至少2張)", badge: "極度重要", meta: "Visa/Master/JCB", note: "開通海外交易與 PIN 碼，至少帶兩家不同發卡行", checked: false, checkedByList: [] },
+    { text: "電子機票憑證 / 登機行程單", badge: "極度重要", meta: "手機PDF/紙本", note: "核對護照英文拼音、航班編號與那霸機場國際線", checked: false, checkedByList: [] },
+    { text: "租車預約確認信 / 訂單憑證", badge: "極度重要", meta: "Email/手機截圖", note: "確認取車門市、機場接駁乘車處、車型與 CDW/NOC 保險", checked: false, checkedByList: [] },
+    { text: "行動電源 (容量 <100Wh)", badge: "極度重要", meta: "隨身手提(嚴禁託運)", note: "標示需清晰規格容量，出發前充滿電量", checked: false, checkedByList: [] },
+    { text: "個人常備慢性病藥品與處方箋", badge: "極度重要", meta: "隨身攜帶", note: "備妥天數+2~3天份量，保留完整藥袋與英文說明", checked: false, checkedByList: [] },
+    { text: "第一晚飯店預約單 / 地址電話", badge: "重要", meta: "電子憑證/備忘錄", note: "記下首晚飯店英日文名稱、地址與電話 (VJW 必備)", checked: false, checkedByList: [] },
+    { text: "旅遊平安險 & 海外突發疾病保單", badge: "重要", meta: "電子保單/保單號", note: "確認含海外醫療救助，記下 24 小時海外急難救助電話", checked: false, checkedByList: [] },
+    { text: "車用手機架 / 雙孔車充線", badge: "重要", meta: "隨身包", note: "自備手機架方便 Google Maps 導航，避免手持觸法", checked: false, checkedByList: [] }
+  ],
+  "🗓️ 出發前 2~3 個月": [
+    { text: "機票與住宿預訂", badge: "極高", meta: "全員", note: "護照英文名需完全相符，確認訂房記錄與取消條款", checked: false, checkedByList: [] },
+    { text: "租車預訂 (ORIX/OTS等)", badge: "極高", meta: "駕駛人", note: "確認含安心免責險(CDW/NOC)、ETC卡與機場接駁門市", checked: false, checkedByList: [] },
+    { text: "行程動線規劃與景點票券", badge: "中", meta: "全員", note: "規劃中北部與南部動線，Klook/KKday 比價美麗海水族館等門票", checked: false, checkedByList: [] }
+  ],
+  "🗓️ 出發前 1 個月": [
+    { text: "申辦台灣駕照日文譯本", badge: "極高", meta: "駕駛人", note: "帶身分證+台灣駕照正本至監理所辦理(規費100元)", checked: false, checkedByList: [] },
+    { text: "檢查全員護照有效期限 (>6個月)", badge: "極高", meta: "全員", note: "自返國日起算需滿 6 個月以上，不足即刻換發", checked: false, checkedByList: [] },
+    { text: "購買日本上網 eSim / Wi-Fi 機", badge: "高", meta: "全員", note: "確認手機支援 eSim 或選購雙網卡，截圖存妥 QR 啟用碼", checked: false, checkedByList: [] },
+    { text: "投保海外旅遊平安與不便險", badge: "高", meta: "全員", note: "含海外突發疾病、班機延誤，記錄海外急難救助電話", checked: false, checkedByList: [] }
+  ],
+  "🗓️ 出發前 1~2 週": [
+    { text: "填寫 Visit Japan Web (VJW)", badge: "極高", meta: "全員", note: "線上填報入境與海關申報(同行家人可合併海關)，截圖存離線相簿", checked: false, checkedByList: [] },
+    { text: "兌換日幣現鈔與海外刷卡確認", badge: "高", meta: "全員", note: "多換千円鈔，確認信用卡海外回饋、開通刷卡與 PIN 碼", checked: false, checkedByList: [] },
+    { text: "預約人氣餐廳與水上體驗", badge: "中", meta: "全員", note: "預訂琉球之牛/敘敘苑等名店，詳閱取消退訂政策", checked: false, checkedByList: [] },
+    { text: "整理行車動線與離線 MapCode", badge: "中", meta: "駕駛人", note: "標註景點飯店 MapCode，下載 Google Maps 沖繩離線地圖", checked: false, checkedByList: [] }
+  ],
+  "🗓️ 出發前 3~5 天": [
+    { text: "行李打包與行李箱限重確認", badge: "高", meta: "全員", note: "對照行李打包清單秤重，預留伴手禮空間，留意隨身液體規範", checked: false, checkedByList: [] },
+    { text: "查詢沖繩當地一週天氣預報", badge: "中", meta: "全員", note: "查看日本氣象廳/Tenki.jp，海島天候多變備晴雨傘與防風外套", checked: false, checkedByList: [] },
+    { text: "下載離線翻譯與必備交通 App", badge: "中", meta: "全員", note: "Google 翻譯(日文離線套件)、Japan Travel、VoiceTra", checked: false, checkedByList: [] }
+  ],
+  "🗓️ 出發前 1 天至當天": [
+    { text: "再次核對核心四寶證件", badge: "極高", meta: "全員", note: "護照、駕照+日文譯本、VJW 截圖、網卡/現鈔全放隨身包，嚴禁託運", checked: false, checkedByList: [] },
+    { text: "航空公司線上報到 (Web Check-in)", badge: "高", meta: "全員", note: "起飛前 24-48 小時線上劃位，取得電子登機證存手機", checked: false, checkedByList: [] },
+    { text: "巡檢行動電源與手提行李違禁品", badge: "極高", meta: "全員", note: "行動電源/鋰電池必手提；100ml以上液體與刀剪必託運；提早2.5~3小時到機場", checked: false, checkedByList: [] }
+  ]
 };
 
+// --- 整合自試算表：行李打包清單 (5 大分類共 31 項) ---
 const initialLuggageList = {
-  "隨身與託運規定": [{ text: "確認航空行李限重", checked: false, checkedByList: [] }, { text: "液體100ml以內放夾鏈袋(隨身)", checked: false, checkedByList: [] }, { text: "行動電源不可託運", checked: false, checkedByList: [] }],
-  "隨身物品": [{ text: "行動電源 (必帶隨身)", checked: false, checkedByList: [] }, { text: "晴雨傘", checked: false, checkedByList: [] }, { text: "濕紙巾", checked: false, checkedByList: [] }, { text: "環保袋", checked: false, checkedByList: [] }, { text: "頸枕", checked: false, checkedByList: [] }],
-  "錢包與證件": [{ text: "護照 (必備)", checked: false, checkedByList: [] }, { text: "日幣現金", checked: false, checkedByList: [] }, { text: "信用卡 (推薦JCB)", checked: false, checkedByList: [] }, { text: "駕照正本 與 日文譯本", checked: false, checkedByList: [] }],
-  "電器與工具": [{ text: "手機充電線", checked: false, checkedByList: [] }, { text: "轉接頭 (日本雙扁平)", checked: false, checkedByList: [] }, { text: "備用耳機", checked: false, checkedByList: [] }],
-  "生活用品": [{ text: "衛生紙", checked: false, checkedByList: [] }, { text: "口罩", checked: false, checkedByList: [] }, { text: "生理用品", checked: false, checkedByList: [] }],
-  "衣物與飾品": [{ text: "薄長袖/薄外套", checked: false, checkedByList: [] }, { text: "防風保暖外套 (冬季)", checked: false, checkedByList: [] }, { text: "好走的鞋", checked: false, checkedByList: [] }, { text: "墨鏡 / 帽子", checked: false, checkedByList: [] }, { text: "泳裝", checked: false, checkedByList: [] }],
-  "洗漱包": [{ text: "牙膏 / 牙刷", checked: false, checkedByList: [] }, { text: "洗髮沐浴旅行組", checked: false, checkedByList: [] }, { text: "常備毛巾", checked: false, checkedByList: [] }],
-  "化妝包": [{ text: "保養品", checked: false, checkedByList: [] }, { text: "海洋友善防曬乳", checked: false, checkedByList: [] }, { text: "卸妝用品", checked: false, checkedByList: [] }],
-  "醫藥包": [{ text: "腸胃藥", checked: false, checkedByList: [] }, { text: "止痛藥", checked: false, checkedByList: [] }, { text: "暈車藥", checked: false, checkedByList: [] }, { text: "OK繃", checked: false, checkedByList: [] }]
+  "📄 文件與貴重物品": [
+    { text: "護照正本 + 影本2份", rule: "隨身嚴禁託運", qty: "1份", note: "正本與影本分開存放，以防遺失補辦", checked: false, checkedByList: [] },
+    { text: "台灣駕照正本 + 日文譯本", rule: "隨身嚴禁託運", qty: "1組", note: "租車取車時駕駛人必須出示雙正本核對", checked: false, checkedByList: [] },
+    { text: "日幣現鈔、信用卡、提款卡", rule: "隨身嚴禁託運", qty: "依個人", note: "現金與卡片分開放，建議帶至少兩張海外回饋卡", checked: false, checkedByList: [] },
+    { text: "VJW QR Code 截圖 & 電子機票", rule: "手機離線相簿", qty: "1份", note: "存於手機相簿，免依賴機場漫遊網路", checked: false, checkedByList: [] },
+    { text: "飯店訂房與租車預約單憑證", rule: "手機/隨身包", qty: "1份", note: "存為 PDF 或列印紙本備查", checked: false, checkedByList: [] }
+  ],
+  "🔌 3C與電子產品": [
+    { text: "行動電源 (需 <100Wh)", rule: "隨身嚴禁託運", qty: "1~2個", note: "民航法規嚴禁託運！必須隨身手提，規格標籤需清楚", checked: false, checkedByList: [] },
+    { text: "智慧型手機 + 充電器 + 充電線", rule: "隨身手提", qty: "1組", note: "建議準備多孔快充插頭與備用充電線", checked: false, checkedByList: [] },
+    { text: "相機 / 空拍機 / 備用鋰電池", rule: "隨身嚴禁託運", qty: "1組", note: "含鋰電池設備一律隨身；空拍機需留意日本法規", checked: false, checkedByList: [] },
+    { text: "雙孔車充轉換頭 + 車用手機架", rule: "隨身或託運", qty: "1組", note: "沖繩自駕極度推薦自備手機架，Google Maps 導航必備", checked: false, checkedByList: [] },
+    { text: "日本規格雙平腳插頭 / 延長線", rule: "隨身或託運", qty: "1組", note: "日本100V與台灣雙扁插頭相容，延長線方便多設備充電", checked: false, checkedByList: [] },
+    { text: "降噪耳機 / 藍牙耳機", rule: "隨身手提", qty: "1個", note: "飛行途中抗噪與休息必備", checked: false, checkedByList: [] }
+  ],
+  "👕 衣物與海島穿搭": [
+    { text: "換洗衣物 (依冬季/晴天準備)", rule: "託運主行李", qty: "3~5套", note: "2月沖繩約15-21°C，建議洋蔥式穿搭與透氣內搭", checked: false, checkedByList: [] },
+    { text: "泳裝 / 水母衣 / 防磨防曬衣", rule: "託運主行李", qty: "1~2套", note: "飯店室內泳池、溫泉或海灘玩水備用", checked: false, checkedByList: [] },
+    { text: "防風保暖外套 / 薄外套", rule: "隨身攜帶", qty: "1件", note: "機艙冷氣、海邊強風與早晚溫差必備", checked: false, checkedByList: [] },
+    { text: "寬簷遮陽帽 / 偏光太陽眼鏡", rule: "隨身或託運", qty: "各1件", note: "沖繩晴天紫外線強，自駕與戶外護眼好用", checked: false, checkedByList: [] },
+    { text: "好走的鞋 / 海灘拖鞋或溯溪鞋", rule: "託運主行李", qty: "各1雙", note: "步行景點多需好走鞋；沙灘多珊瑚碎石穿拖鞋/溯溪鞋較安全", checked: false, checkedByList: [] },
+    { text: "免洗內褲 / 排汗內衣襪", rule: "託運主行李", qty: "4~5套", note: "免洗內褲穿完即丟，節省行李箱空間與清洗時間", checked: false, checkedByList: [] },
+    { text: "衣物壓縮袋 / 髒衣收納袋", rule: "託運主行李", qty: "2~3個", note: "分類乾淨與髒衣物，壓縮節省空間裝伴手禮", checked: false, checkedByList: [] }
+  ],
+  "🧴 盥洗保養與醫藥": [
+    { text: "海洋友善防曬乳 (Reef-Safe)", rule: "託運(隨身<100ml)", qty: "1瓶", note: "保護沖繩珊瑚礁生態，請選海洋友善防曬", checked: false, checkedByList: [] },
+    { text: "蘆薈曬後舒緩修護凝膠", rule: "託運主行李", qty: "1瓶", note: "日曬後鎮定肌膚退紅，避免曬傷脫皮", checked: false, checkedByList: [] },
+    { text: "個人盥洗旅行組 (牙刷/洗沐)", rule: "託運主行李", qty: "1組", note: "日本許多環保飯店不主動提供拋棄式牙刷", checked: false, checkedByList: [] },
+    { text: "保濕面膜 / 護唇膏 / 乳液", rule: "託運主行李", qty: "1組", note: "冬季海風與飯店暖氣房補水保濕必備", checked: false, checkedByList: [] },
+    { text: "暈車藥 / 暈船藥", rule: "隨身攜帶", qty: "1盒", note: "山路自駕或搭船出發前半小時服用", checked: false, checkedByList: [] },
+    { text: "個人常備藥品 (止痛/退燒/胃腸)", rule: "隨身行李", qty: "1組", note: "備妥普拿疼、正露丸、感冒藥與腸胃藥", checked: false, checkedByList: [] },
+    { text: "防蚊液 / 蚊蟲叮咬止癢液", rule: "託運主行李", qty: "1瓶", note: "戶外景點如首里城、公園防蚊止癢", checked: false, checkedByList: [] },
+    { text: "防水OK繃 / 彈性繃帶", rule: "隨身或託運", qty: "1盒", note: "步行磨腳或輕微擦傷緊急護理", checked: false, checkedByList: [] }
+  ],
+  "🎒 其他便利小物": [
+    { text: "折疊式晴雨兩用傘", rule: "隨身或託運", qty: "1把", note: "沖繩海島易有陣雨，兼具遮陽與擋雨功能", checked: false, checkedByList: [] },
+    { text: "大容量折疊購物袋 (環保袋)", rule: "隨身攜帶", qty: "2個", note: "日本超商與超市塑膠袋均收費，採買伴手禮超實用", checked: false, checkedByList: [] },
+    { text: "手機專用防水袋 (含掛繩)", rule: "隨身或託運", qty: "1~2個", note: "海邊戲水或雨天拍照保護手機", checked: false, checkedByList: [] },
+    { text: "手提電子行李秤", rule: "託運主行李", qty: "1個", note: "回程前測量行李重量，避免超重罰鍰", checked: false, checkedByList: [] },
+    { text: "隨身濕紙巾 / 乾洗手噴霧", rule: "隨身手提", qty: "1~2包", note: "外食、海邊洗手不便時清潔雙手", checked: false, checkedByList: [] }
+  ]
+};
+
+// --- 整合自試算表：關於沖繩 (實用資訊) ---
+const okinawaInfoData = {
+  rules: [
+    { title: "簽證待遇", value: "觀光免簽證 90 天", desc: "護照效期需滿 6 個月以上，入境前填妥 Visit Japan Web (VJW)。" },
+    { title: "時差差距", value: "快台灣 1 小時 (GMT+9)", desc: "台灣 08:00 = 日本 09:00，留意班機與租車門市打烊時間。" },
+    { title: "電壓插座", value: "100V 雙平腳 (Type A)", desc: "與台灣雙扁插頭相同，手機充電器可直插；高耗電吹風機留意電壓。" },
+    { title: "貨幣與消費", value: "日圓 (JPY / 円)", desc: "市區多數可刷卡/Apple Pay，偏遠食堂、拉麵機與停車場只收現金。" },
+    { title: "右駕行車守則", value: "靠左行駛 (右駕左行)", desc: "口訣：「右轉大彎、左轉小彎」、駕駛人靠道路中心線！雨刷方向燈相反。" },
+    { title: "自駕必備證件", value: "台灣駕照正本 + 日文譯本", desc: "國際駕照 (IDP) 在日本無效！兩份正本缺一不可交車。" },
+    { title: "高速公路與速限", value: "一般道 40-50 / 高速 80", desc: "沖繩自動車道限速 80 km/h；租借 ETC 走專用道，無 ETC 抽券付現。" },
+    { title: "緊急救助電話", value: "警 110 / 救 119 / 海 118", desc: "發生車禍即使極輕微刮傷，也必須先報警取得事故證明才能理賠！" },
+    { title: "免稅購物規範", value: "滿 ¥5,000 (未稅) 退稅 10%", desc: "需出示護照正本；食品藥妝密封包裝在日本境內嚴禁拆封。" }
+  ],
+  foods: [
+    { name: "沖繩麵 (Okinawa Soba)", price: "¥800~1,200", shops: "百年古家 大家、岸本食堂、濱屋", desc: "厚實麵條配軟嫩豬肋排(Soki)與柴魚清湯，淋泡盛辣椒絕配。" },
+    { name: "阿古豬火鍋/燒肉", price: "¥3,500~6,800", shops: "百年古家 大家、島豚家、琉球之牛、我那霸", desc: "沖繩原生黑毛豬，霜降油花均勻清甜無腥味。" },
+    { name: "沖繩塔可飯 (Taco Rice)", price: "¥750~1,000", shops: "King Tacos、Charlie's Tacos", desc: "白飯鋪滿墨西哥辣肉醬、起司絲、生菜與番茄丁，酸辣開胃。" },
+    { name: "沖繩苦瓜炒豆腐", price: "¥700~950", shops: "花人逢、波照間國際通店、在地食堂", desc: "爽脆山苦瓜搭島豆腐、餐肉(Spam)與雞蛋快炒，鮮甜回甘。" },
+    { name: "石垣牛頂級燒肉/牛排", price: "¥5,500~13,000", shops: "琉球之牛、炭火燒肉NAKAMA、STEAK 88", desc: "八重山群島放牧黑毛和牛，肉質纖細甘甜、油脂入口即化。" },
+    { name: "海葡萄丼飯", price: "¥1,300~2,000", shops: "元祖海葡萄本店、泊港魚市場", desc: "「綠色魚子醬」，咬下在口中爆開微鹹海味，搭生魚片超鮮。" },
+    { name: "沖繩香檬甜點/冰淇淋", price: "¥350~650", shops: "Blue Seal 冰淇淋、各地道之驛", desc: "沖繩特產酸桔，果香酸甜解膩，製成果汁或冰品超消暑。" }
+  ],
+  souvenirs: [
+    { name: "御菓子御殿 原味紅芋塔", price: "¥1,080~1,800/盒", shelf: "常溫約 30 天", desc: "讀谷村 100% 紫地瓜製成，船型酥皮塔配細緻紫薯泥。" },
+    { name: "宮古島雪鹽夾心餅 / 雪鹽", price: "¥850~1,600/盒", shelf: "常溫 60~180 天", desc: "礦物質豐富海鹽製成，鹹甜交織極具層次。" },
+    { name: "沖繩純正黑糖 / 黑糖生薑", price: "¥350~750/包", shelf: "常溫 12 個月", desc: "多良間島/西表島純甘蔗熬煮，單吃或煮黑糖奶茶皆宜。" },
+    { name: "石垣島辣油 (邊銀食堂)", price: "¥1,000~1,300/瓶", shelf: "常溫 12 個月", desc: "手工傳奇辣油，融合島唐辛子、海鹽、黑糖，拌麵炒飯神醬。" },
+    { name: "沖繩泡盛酒 / 島辣椒泡盛", price: "¥1,200~3,800/瓶", shelf: "未開封永久", desc: "琉球傳統蒸餾酒；島辣椒泡盛是吃沖繩麵必淋提味神醬。" },
+    { name: "福砂屋 / 沖繩限定黑糖蛋糕", price: "¥1,300~1,950/條", shelf: "常溫 14~21 天", desc: "長崎蛋糕名店結合沖繩黑糖，底部雙目糖顆粒香氣撲鼻。" },
+    { name: "沖繩風獅爺 (Shi-Sa) 擺件", price: "¥800~3,500/對", shelf: "永久保存", desc: "壺屋通陶藝/琉球玻璃，開口招福納財、閉口守財避邪。" }
+  ]
 };
 
 const DEPARTURE_CATEGORIES = Object.keys(initialDepartureList);
@@ -632,6 +735,25 @@ const MemberBadge = ({ name, prefix = "" }) => {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 text-[11px] font-bold rounded-full border shrink-0 whitespace-nowrap ${style}`}>
       {prefix}{name}
+    </span>
+  );
+};
+
+const PriorityBadge = ({ label }) => {
+  if (!label) return null;
+  let style = "bg-[#ECE9E0] text-[#6B6554] border-[#DCD6CA]";
+  if (label.includes("致命") || label.includes("極高") || label.includes("嚴禁")) {
+    style = "bg-[#FCECEE] text-[#B93A49] border-[#F2D7D9]";
+  } else if (label.includes("極度") || label === "高" || label.includes("隨身")) {
+    style = "bg-[#FDF2E9] text-[#C75A22] border-[#F4E0D1]";
+  } else if (label.includes("託運")) {
+    style = "bg-[#EAF3FA] text-[#316999] border-[#D3E5F4]";
+  } else if (label === "重要") {
+    style = "bg-[#EBF5EE] text-[#2F6B4A] border-[#D4E8DC]";
+  }
+  return (
+    <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded border whitespace-nowrap ${style}`}>
+      {label}
     </span>
   );
 };
@@ -746,12 +868,14 @@ export default function App() {
   const [copiedSettlement, setCopiedSettlement] = useState(false);
   const [previewReceipt, setPreviewReceipt] = useState(null);
 
-  // --- CHECKLIST STATE ---
+  // --- CHECKLIST STATE (使用 v2 鍵值以直接載入最新彙整版試算表清單) ---
   const [checklistTab, setChecklistTab] = useState('departure');
-  const [departureList, setDepartureList] = useState(() => getSavedState('okinawa_departure', initialDepartureList));
-  const [luggageList, setLuggageList] = useState(() => getSavedState('okinawa_luggage', initialLuggageList));
+  const [infoSection, setInfoSection] = useState('rules');
+  const [departureList, setDepartureList] = useState(() => getSavedState('okinawa_departure_v2', initialDepartureList));
+  const [luggageList, setLuggageList] = useState(() => getSavedState('okinawa_luggage_v2', initialLuggageList));
   const [shoppingList, setShoppingList] = useState(() => getSavedState('okinawa_shopping', initialShoppingList));
   const [newShoppingItem, setNewShoppingItem] = useState('');
+  const [addedSouvenirMsg, setAddedSouvenirMsg] = useState('');
 
   const daysLeft = useMemo(() => {
     const tripDate = new Date('2027-02-08T00:00:00');
@@ -810,8 +934,8 @@ export default function App() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             if (Array.isArray(data.expenses)) setExpenses(data.expenses);
-            if (data.departureList) setDepartureList(data.departureList);
-            if (data.luggageList) setLuggageList(data.luggageList);
+            if (data.departureListV2) setDepartureList(data.departureListV2);
+            if (data.luggageListV2) setLuggageList(data.luggageListV2);
             if (Array.isArray(data.shoppingList)) setShoppingList(data.shoppingList);
           }
         },
@@ -993,7 +1117,6 @@ export default function App() {
         const nextList = alreadyCheckedByMe
           ? currentList.filter(m => m !== currentMember)
           : [...currentList, currentMember];
-        // 依 FAMILY_MEMBERS 順序排列標籤，畫面更整齊
         const orderedList = FAMILY_MEMBERS.filter(m => nextList.includes(m));
         return {
           ...item,
@@ -1009,14 +1132,14 @@ export default function App() {
         [category]: updateCategoryItems(departureList[category] || [])
       };
       setDepartureList(updated);
-      saveData('departureList', updated, 'okinawa_departure');
+      saveData('departureListV2', updated, 'okinawa_departure_v2');
     } else {
       const updated = {
         ...luggageList,
         [category]: updateCategoryItems(luggageList[category] || [])
       };
       setLuggageList(updated);
-      saveData('luggageList', updated, 'okinawa_luggage');
+      saveData('luggageListV2', updated, 'okinawa_luggage_v2');
     }
   };
 
@@ -1052,6 +1175,26 @@ export default function App() {
     setNewShoppingItem('');
   };
 
+  const addSouvenirToShopping = (name) => {
+    const exists = shoppingList.some(item => item.text === name);
+    if (!exists) {
+      const updated = [
+        ...shoppingList,
+        {
+          id: Date.now(),
+          text: name,
+          checked: false,
+          addedBy: currentMember,
+          checkedBy: ''
+        }
+      ];
+      setShoppingList(updated);
+      saveData('shoppingList', updated, 'okinawa_shopping');
+    }
+    setAddedSouvenirMsg(exists ? `「${name}」已在購物清單中` : `已將「${name}」加入購物清單！`);
+    setTimeout(() => setAddedSouvenirMsg(''), 2200);
+  };
+
   const deleteShoppingItem = (id) => {
     const updated = shoppingList.filter(item => item.id !== id);
     setShoppingList(updated);
@@ -1060,9 +1203,18 @@ export default function App() {
 
   let totalDeparture = 0;
   let completedDeparture = 0;
-  Object.values(departureList).forEach(cat => {
-    totalDeparture += cat.length;
-    completedDeparture += cat.filter(item => getCheckedMembers(item).length > 0 || item.checked).length;
+  DEPARTURE_CATEGORIES.forEach(cat => {
+    const items = departureList[cat] || [];
+    totalDeparture += items.length;
+    completedDeparture += items.filter(item => getCheckedMembers(item).length > 0 || item.checked).length;
+  });
+
+  let totalLuggage = 0;
+  let completedLuggage = 0;
+  LUGGAGE_CATEGORIES.forEach(cat => {
+    const items = luggageList[cat] || [];
+    totalLuggage += items.length;
+    completedLuggage += items.filter(item => getCheckedMembers(item).length > 0 || item.checked).length;
   });
 
   const currentDayData = tripData.daily.find(d => d.day === selectedDay) || tripData.daily[0];
@@ -1833,67 +1985,92 @@ export default function App() {
         {/* ================= TOOLS / CHECKLIST TAB ================= */}
         {activeTab === 'tools' && (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#F9F8F5]">
-            <div className="flex-shrink-0 flex bg-white border-b border-[#EAE6DF] px-4 pt-2 z-10">
-              <button onClick={() => setChecklistTab('departure')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'departure' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>出發清單</button>
-              <button onClick={() => setChecklistTab('luggage')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'luggage' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>行李打包</button>
-              <button onClick={() => setChecklistTab('shopping')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'shopping' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>購物清單</button>
+            <div className="flex-shrink-0 flex bg-white border-b border-[#EAE6DF] px-2 pt-2 z-10">
+              <button onClick={() => setChecklistTab('departure')} className={`flex-1 pb-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${checklistTab === 'departure' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>出發清單</button>
+              <button onClick={() => setChecklistTab('luggage')} className={`flex-1 pb-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${checklistTab === 'luggage' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>行李打包</button>
+              <button onClick={() => setChecklistTab('shopping')} className={`flex-1 pb-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${checklistTab === 'shopping' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>購物清單</button>
+              <button onClick={() => setChecklistTab('info')} className={`flex-1 pb-2.5 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${checklistTab === 'info' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>實用資訊</button>
             </div>
 
-            <div className="flex-shrink-0 bg-[#FAF9F7] border-b border-[#EAE6DF] px-5 py-2 flex items-center justify-between">
-              <span className="text-xs font-bold text-[#8A857B]">點選切換目前操作者：</span>
-              <div className="flex gap-1.5">
-                {FAMILY_MEMBERS.map(m => (
-                  <button
-                    key={m}
-                    onClick={() => handleSelectMember(m)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
-                      currentMember === m
-                        ? `${MEMBER_BADGE_STYLE[m]} shadow-sm scale-105`
-                        : 'bg-white text-[#8A857B] border-[#EAE6DF]'
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
+            {checklistTab !== 'info' && (
+              <div className="flex-shrink-0 bg-[#FAF9F7] border-b border-[#EAE6DF] px-4 py-2 flex items-center justify-between">
+                <span className="text-xs font-bold text-[#8A857B]">目前操作者：</span>
+                <div className="flex gap-1.5">
+                  {FAMILY_MEMBERS.map(m => (
+                    <button
+                      key={m}
+                      onClick={() => handleSelectMember(m)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                        currentMember === m
+                          ? `${MEMBER_BADGE_STYLE[m]} shadow-sm scale-105`
+                          : 'bg-white text-[#8A857B] border-[#EAE6DF]'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10">
+            <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-4 pb-10">
+              {/* 出發清單 (核心確認 + 行前準備時間軸) */}
               {checklistTab === 'departure' && (
-                <div className="space-y-5 animate-fade-in">
-                  <div className="bg-[#EBF5EE] text-[#2F6B4A] p-3.5 rounded-xl text-sm font-bold text-center border border-[#D4E8DC]">
-                    已完成 {completedDeparture} / {totalDeparture} 項 (可以多位家人各自打勾確認)
+                <div className="space-y-4 animate-fade-in">
+                  <div className="bg-[#EBF5EE] text-[#2F6B4A] p-3 rounded-xl text-xs font-bold text-center border border-[#D4E8DC]">
+                    已完成 {completedDeparture} / {totalDeparture} 項 • 每位家人可各自打勾確認
                   </div>
                   {DEPARTURE_CATEGORIES.map((category) => {
                     const items = departureList[category] || [];
+                    const isCore = category.includes('核心');
                     return (
-                      <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
-                        <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
+                      <div key={category} className={`bg-white rounded-2xl border overflow-hidden shadow-sm ${isCore ? 'border-[#F2D7D9]' : 'border-[#EAE6DF]'}`}>
+                        <div className={`px-4 py-2.5 border-b font-bold text-sm flex justify-between items-center ${isCore ? 'bg-[#FCECEE] text-[#B93A49] border-[#F2D7D9]' : 'bg-[#FAF9F7] text-[#6B6554] border-[#EAE6DF]'}`}>
+                          <span>{category}</span>
+                          <span className="text-xs opacity-80">
+                            {items.filter(i => getCheckedMembers(i).length > 0 || i.checked).length}/{items.length}
+                          </span>
+                        </div>
                         <div className="divide-y divide-[#F0EBE1]">
                           {items.map((item, idx) => {
                             const checkedMembers = getCheckedMembers(item);
                             const isCheckedByCurrent = checkedMembers.includes(currentMember);
                             const hasAnyChecked = checkedMembers.length > 0;
                             return (
-                              <label key={`${category}-${idx}`} className="flex items-start justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                              <label key={`${category}-${idx}`} className="flex items-start justify-between px-3.5 py-3 gap-2.5 cursor-pointer active:bg-[#FAF9F7]">
+                                <div className="flex items-start gap-2.5 min-w-0 flex-1">
                                   <input
                                     type="checkbox"
                                     checked={isCheckedByCurrent}
                                     onChange={() => toggleChecklist('departure', category, idx)}
                                     className="w-5 h-5 mt-0.5 accent-[#4A5D54] rounded shrink-0"
                                   />
-                                  <span className={`text-base leading-snug ${hasAnyChecked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>
-                                    {item.text}
-                                  </span>
-                                </div>
-                                {hasAnyChecked && (
-                                  <div className="flex flex-wrap justify-end gap-1 max-w-[48%] shrink-0">
-                                    {checkedMembers.map(member => (
-                                      <MemberBadge key={member} name={member} prefix="✓ " />
-                                    ))}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className={`text-[15px] leading-snug ${hasAnyChecked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-bold'}`}>
+                                        {item.text}
+                                      </span>
+                                      {item.badge && <PriorityBadge label={item.badge} />}
+                                      {item.meta && (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#FAF9F7] text-[#8A857B] border border-[#EAE6DF]">
+                                          {item.meta}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {item.note && (
+                                      <p className={`text-xs mt-1 leading-relaxed ${hasAnyChecked ? 'text-[#B8B3AA]' : 'text-[#6B6554]'}`}>
+                                        {item.note}
+                                      </p>
+                                    )}
+                                    {hasAnyChecked && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {checkedMembers.map(member => (
+                                          <MemberBadge key={member} name={member} prefix="✓ " />
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                </div>
                               </label>
                             );
                           })}
@@ -1904,41 +2081,62 @@ export default function App() {
                 </div>
               )}
 
+              {/* 行李打包 (5 大分類共 31 項) */}
               {checklistTab === 'luggage' && (
-                <div className="space-y-5 animate-fade-in">
+                <div className="space-y-4 animate-fade-in">
                   <div className="bg-[#EAF3FA] text-[#316999] p-3 rounded-xl text-xs font-bold text-center border border-[#D3E5F4]">
-                    💡 每位家人可各自打勾確認自己的隨身與行李物品（標籤會並排保留）
+                    已打包 {completedLuggage} / {totalLuggage} 項 • 留意「嚴禁託運」物品必放隨身包
                   </div>
                   {LUGGAGE_CATEGORIES.map((category) => {
                     const items = luggageList[category] || [];
                     return (
                       <div key={category} className="bg-white rounded-2xl border border-[#EAE6DF] overflow-hidden shadow-sm">
-                        <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm">{category}</div>
+                        <div className="bg-[#FAF9F7] px-4 py-2.5 border-b border-[#EAE6DF] font-bold text-[#6B6554] text-sm flex justify-between items-center">
+                          <span>{category}</span>
+                          <span className="text-xs opacity-80">
+                            {items.filter(i => getCheckedMembers(i).length > 0 || i.checked).length}/{items.length}
+                          </span>
+                        </div>
                         <div className="divide-y divide-[#F0EBE1]">
                           {items.map((item, idx) => {
                             const checkedMembers = getCheckedMembers(item);
                             const isCheckedByCurrent = checkedMembers.includes(currentMember);
                             const hasAnyChecked = checkedMembers.length > 0;
                             return (
-                              <label key={`${category}-${idx}`} className="flex items-start justify-between px-4 py-3.5 gap-3 cursor-pointer active:bg-[#FAF9F7]">
-                                <div className="flex items-start gap-3 min-w-0 flex-1">
+                              <label key={`${category}-${idx}`} className="flex items-start justify-between px-3.5 py-3 gap-2.5 cursor-pointer active:bg-[#FAF9F7]">
+                                <div className="flex items-start gap-2.5 min-w-0 flex-1">
                                   <input
                                     type="checkbox"
                                     checked={isCheckedByCurrent}
                                     onChange={() => toggleChecklist('luggage', category, idx)}
                                     className="w-5 h-5 mt-0.5 accent-[#4A5D54] rounded shrink-0"
                                   />
-                                  <span className={`text-base leading-snug ${hasAnyChecked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-medium'}`}>
-                                    {item.text}
-                                  </span>
-                                </div>
-                                {hasAnyChecked && (
-                                  <div className="flex flex-wrap justify-end gap-1 max-w-[48%] shrink-0">
-                                    {checkedMembers.map(member => (
-                                      <MemberBadge key={member} name={member} prefix="✓ " />
-                                    ))}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className={`text-[15px] leading-snug ${hasAnyChecked ? 'text-[#A09C94] line-through' : 'text-[#2D2A26] font-bold'}`}>
+                                        {item.text}
+                                      </span>
+                                      {item.rule && <PriorityBadge label={item.rule} />}
+                                      {item.qty && (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#FAF9F7] text-[#8A857B] border border-[#EAE6DF]">
+                                          {item.qty}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {item.note && (
+                                      <p className={`text-xs mt-1 leading-relaxed ${hasAnyChecked ? 'text-[#B8B3AA]' : 'text-[#6B6554]'}`}>
+                                        {item.note}
+                                      </p>
+                                    )}
+                                    {hasAnyChecked && (
+                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                        {checkedMembers.map(member => (
+                                          <MemberBadge key={member} name={member} prefix="✓ " />
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                </div>
                               </label>
                             );
                           })}
@@ -1949,6 +2147,7 @@ export default function App() {
                 </div>
               )}
 
+              {/* 購物清單 */}
               {checklistTab === 'shopping' && (
                 <div className="space-y-4 animate-fade-in">
                   <form onSubmit={addShoppingItem} className="flex gap-2">
@@ -1996,6 +2195,92 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* 關於沖繩：實用資訊 / 必吃美食 / 必買伴手禮 */}
+              {checklistTab === 'info' && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex gap-2 bg-white p-1.5 rounded-xl border border-[#EAE6DF] shadow-sm">
+                    <button
+                      onClick={() => setInfoSection('rules')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors ${infoSection === 'rules' ? 'bg-[#4A5D54] text-white' : 'text-[#6B6554]'}`}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" /> 旅遊規範
+                    </button>
+                    <button
+                      onClick={() => setInfoSection('foods')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors ${infoSection === 'foods' ? 'bg-[#C75A22] text-white' : 'text-[#6B6554]'}`}
+                    >
+                      <Utensils className="w-3.5 h-3.5" /> 必吃美食
+                    </button>
+                    <button
+                      onClick={() => setInfoSection('souvenirs')}
+                      className={`flex-1 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1 transition-colors ${infoSection === 'souvenirs' ? 'bg-[#316999] text-white' : 'text-[#6B6554]'}`}
+                    >
+                      <Gift className="w-3.5 h-3.5" /> 必買伴手禮
+                    </button>
+                  </div>
+
+                  {addedSouvenirMsg && (
+                    <div className="bg-[#EBF5EE] text-[#2F6B4A] border border-[#D4E8DC] px-4 py-2.5 rounded-xl text-xs font-bold text-center animate-fade-in">
+                      ✅ {addedSouvenirMsg}
+                    </div>
+                  )}
+
+                  {infoSection === 'rules' && (
+                    <div className="space-y-3">
+                      {okinawaInfoData.rules.map((r, i) => (
+                        <div key={i} className="bg-white rounded-2xl p-4 border border-[#EAE6DF] shadow-sm">
+                          <div className="flex justify-between items-center gap-2 mb-1.5">
+                            <span className="font-bold text-sm text-[#2D2A26]">{r.title}</span>
+                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#EAF3FA] text-[#316999] whitespace-nowrap">{r.value}</span>
+                          </div>
+                          <p className="text-xs text-[#6B6554] leading-relaxed">{r.desc}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {infoSection === 'foods' && (
+                    <div className="space-y-3">
+                      {okinawaInfoData.foods.map((f, i) => (
+                        <div key={i} className="bg-white rounded-2xl p-4 border border-[#EAE6DF] shadow-sm">
+                          <div className="flex justify-between items-center gap-2 mb-1">
+                            <span className="font-bold text-base text-[#2D2A26]">{f.name}</span>
+                            <span className="text-xs font-bold text-[#C75A22] whitespace-nowrap">{f.price}</span>
+                          </div>
+                          <p className="text-xs text-[#6B6554] leading-relaxed">{f.desc}</p>
+                          <div className="mt-2 pt-2 border-t border-dashed border-[#EAE6DF] text-xs text-[#4A5D54] font-bold">
+                            📍 推薦名店：{f.shops}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {infoSection === 'souvenirs' && (
+                    <div className="space-y-3">
+                      {okinawaInfoData.souvenirs.map((s, i) => (
+                        <div key={i} className="bg-white rounded-2xl p-4 border border-[#EAE6DF] shadow-sm">
+                          <div className="flex justify-between items-start gap-2 mb-1">
+                            <span className="font-bold text-base text-[#2D2A26]">{s.name}</span>
+                            <span className="text-xs font-bold text-[#316999] whitespace-nowrap">{s.price}</span>
+                          </div>
+                          <p className="text-xs text-[#6B6554] leading-relaxed">{s.desc}</p>
+                          <div className="mt-2.5 pt-2.5 border-t border-dashed border-[#EAE6DF] flex justify-between items-center gap-2">
+                            <span className="text-[11px] text-[#8A857B] font-medium">保存：{s.shelf}</span>
+                            <button
+                              onClick={() => addSouvenirToShopping(s.name)}
+                              className="text-xs font-bold bg-[#EBF5EE] text-[#2F6B4A] border border-[#D4E8DC] px-2.5 py-1 rounded-lg active:bg-[#D4E8DC] flex items-center gap-1"
+                            >
+                              <Plus className="w-3.5 h-3.5" /> 加入購物清單
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

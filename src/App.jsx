@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapPin, Navigation, Clock, Ticket, Info, CloudSun,
-  Utensils, Bed, Plane, Phone, Wallet, Calendar,
+  Utensils, Bed, Plane, Phone, Wallet,
   AlertCircle, FileText, Coffee, Plus, Trash2, Receipt, Car, X, Tag,
   Home, List, CheckSquare, Sun, CloudRain, Users, FileCheck2, ChevronRight, CheckCircle2,
   ShieldAlert, ArrowRightLeft, Copy, Check, Camera, PieChart as PieChartIcon, BarChart3,
@@ -596,7 +596,6 @@ const initialLuggageList = {
   "醫藥包": [{ text: "腸胃藥", checked: false }, { text: "止痛藥", checked: false }, { text: "暈車藥", checked: false }, { text: "OK繃", checked: false }]
 };
 
-// 固定分類顯示順序，避免雲端同步回傳物件鍵值重排導致項目亂跳
 const DEPARTURE_CATEGORIES = Object.keys(initialDepartureList);
 const LUGGAGE_CATEGORIES = Object.keys(initialLuggageList);
 
@@ -605,7 +604,6 @@ const initialShoppingList = [
   { id: 2, text: "波上宮小書包御守", checked: false, addedBy: "本人", checkedBy: "" }
 ];
 
-// --- HELPER: Local Storage ---
 const getSavedState = (key, initialValue) => {
   try {
     const item = window.localStorage.getItem(key);
@@ -653,7 +651,6 @@ const DocButton = ({ link, label }) => (
   </a>
 );
 
-// 沖繩本島北中南方位簡易示意圖
 const OkinawaRegionMap = ({ activeRegion }) => (
   <div className="bg-gradient-to-br from-[#EAF3FA] to-[#F5F9FC] rounded-2xl p-4 border border-[#D3E5F4] shadow-sm">
     <div className="flex items-center justify-between mb-3">
@@ -700,7 +697,6 @@ export default function App() {
   // --- 目前操作者身分 (本人/老婆/爸爸/媽媽) ---
   const [currentMember, setCurrentMember] = useState(() => getSavedState('okinawa_current_member', '本人'));
 
-  // 切換目前操作者身分
   const handleSelectMember = (memberName) => {
     setCurrentMember(memberName);
     try {
@@ -710,14 +706,12 @@ export default function App() {
     }
   };
 
-  // 循環切換操作者身分 (點擊頂部按鈕快速切換)
   const cycleMember = () => {
     const idx = FAMILY_MEMBERS.indexOf(currentMember);
     const next = FAMILY_MEMBERS[(idx + 1) % FAMILY_MEMBERS.length];
     handleSelectMember(next);
   };
 
-  // 偵測是否為 LINE / FB / IG 等內建瀏覽器
   const isInAppBrowser = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     return /Line|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent);
@@ -725,7 +719,7 @@ export default function App() {
 
   // --- NAVIGATION & UI STATE ---
   const [activeTab, setActiveTab] = useState('overview');
-  const [itinerarySubTab, setItinerarySubTab] = useState('overview'); // 'overview' | 'detail'
+  const [itinerarySubTab, setItinerarySubTab] = useState('overview');
   const [selectedDay, setSelectedDay] = useState(1);
   const [isRainyMode, setIsRainyMode] = useState(false);
   const [showSOSModal, setShowSOSModal] = useState(false);
@@ -736,18 +730,17 @@ export default function App() {
   const [newExpense, setNewExpense] = useState({ amount: '', category: '飲食', desc: '', day: 1, payer: '本人', receiptImg: '' });
   const [exchangeRate, setExchangeRate] = useState(0.215);
   const [calcJpy, setCalcJpy] = useState('1000');
-  const [chartType, setChartType] = useState('trend'); // 'trend' | 'pie'
+  const [chartType, setChartType] = useState('trend');
   const [copiedSettlement, setCopiedSettlement] = useState(false);
   const [previewReceipt, setPreviewReceipt] = useState(null);
 
   // --- CHECKLIST STATE ---
-  const [checklistTab, setChecklistTab] = useState('departure'); // 'departure' | 'luggage' | 'shopping'
+  const [checklistTab, setChecklistTab] = useState('departure');
   const [departureList, setDepartureList] = useState(() => getSavedState('okinawa_departure', initialDepartureList));
   const [luggageList, setLuggageList] = useState(() => getSavedState('okinawa_luggage', initialLuggageList));
   const [shoppingList, setShoppingList] = useState(() => getSavedState('okinawa_shopping', initialShoppingList));
   const [newShoppingItem, setNewShoppingItem] = useState('');
 
-  // --- 計算距離 2027/02/08 倒數天數 ---
   const daysLeft = useMemo(() => {
     const tripDate = new Date('2027-02-08T00:00:00');
     const today = new Date();
@@ -756,7 +749,6 @@ export default function App() {
     return diffDays > 0 ? diffDays : 0;
   }, []);
 
-  // --- 監聽 Firebase 登入狀態 (自動忽略大小寫與前後空白，並自動對應家人稱呼) ---
   useEffect(() => {
     if (isSandboxPreview) {
       setAuthLoading(false);
@@ -775,7 +767,6 @@ export default function App() {
         if (isDefaultPlaceholder || normalizedAllowed.includes(userEmail)) {
           setUser(currentUser);
           setAuthError('');
-          // 若本機尚未手動切換過身分，自動依據登入信箱帶入對應稱呼
           const savedMember = window.localStorage.getItem('okinawa_current_member');
           if (!savedMember && EMAIL_TO_DEFAULT_MEMBER[userEmail]) {
             handleSelectMember(EMAIL_TO_DEFAULT_MEMBER[userEmail]);
@@ -793,7 +784,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // --- 監聽 Firestore 即時同步 ---
   useEffect(() => {
     if (!db || !user || user.isPreview) {
       setCloudConnected(false);
@@ -824,7 +814,6 @@ export default function App() {
     }
   }, [user]);
 
-  // --- 寫入雲端與本機存檔 Helper ---
   const saveData = async (field, value, localKey) => {
     try {
       window.localStorage.setItem(localKey, JSON.stringify(value));
@@ -841,7 +830,6 @@ export default function App() {
     }
   };
 
-  // --- 複製目前網址 (給 LINE 內建瀏覽器使用者) ---
   const handleCopyUrl = () => {
     try {
       navigator.clipboard.writeText(window.location.href);
@@ -852,7 +840,6 @@ export default function App() {
     }
   };
 
-  // --- Google 登入處理 ---
   const handleGoogleLogin = async () => {
     setAuthError('');
     if (!auth) {
@@ -886,7 +873,6 @@ export default function App() {
     setUser(null);
   };
 
-  // --- 記帳與分帳邏輯 ---
   const totalExpense = useMemo(() => expenses.reduce((sum, exp) => sum + Number(exp.amount || 0), 0), [expenses]);
   const perPersonAvg = Math.round(totalExpense / 4);
 
@@ -934,7 +920,6 @@ export default function App() {
     }
   };
 
-  // 收據圖片壓縮讀取
   const handleReceiptUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -957,7 +942,6 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // 開啟新增花費時，預設將付款人帶入目前的操作者身分
   const openAddExpenseModal = () => {
     setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: currentMember, receiptImg: '' });
     setIsAddingExpense(true);
@@ -987,7 +971,6 @@ export default function App() {
     saveData('expenses', updated, 'okinawa_expenses');
   };
 
-  // --- 清單操作邏輯 (自動紀錄是誰打勾、誰新增) ---
   const toggleChecklist = (type, category, idx) => {
     if (type === 'departure') {
       const updated = {
@@ -1060,7 +1043,6 @@ export default function App() {
     saveData('shoppingList', updated, 'okinawa_shopping');
   };
 
-  // 計算出發清單完成度
   let totalDeparture = 0;
   let completedDeparture = 0;
   Object.values(departureList).forEach(cat => {
@@ -1072,7 +1054,6 @@ export default function App() {
   const currentOverviewData = tripData.overview.find(d => d.day === selectedDay) || tripData.overview[0];
   const displayedSpots = isRainyMode && currentDayData.rainySpots ? currentDayData.rainySpots : currentDayData.spots;
 
-  // --- 登入門禁畫面 (正式網址上 100% 啟用第三道鎖) ---
   if (authLoading) {
     return (
       <div className="w-full max-w-md mx-auto h-screen bg-[#F9F8F5] flex items-center justify-center">
@@ -1091,7 +1072,6 @@ export default function App() {
           <h1 className="text-2xl font-bold text-[#2D2A26] tracking-wider">沖繩之旅</h1>
           <p className="text-sm text-[#8A857B] font-bold mt-1">Winter 2027 • 6天5夜 家人專屬</p>
 
-          {/* 偵測到 LINE / FB 等內建瀏覽器時顯示醒目引導 */}
           {isInAppBrowser ? (
             <div className="mt-5 bg-[#FDF2E9] border-2 border-[#F4E0D1] rounded-2xl p-4 text-left space-y-2.5">
               <div className="flex items-center gap-2 text-[#C75A22] font-bold text-base">
@@ -1144,14 +1124,13 @@ export default function App() {
 
   return (
     <div className="w-full max-w-md mx-auto h-screen h-[100dvh] font-sans flex flex-col overflow-hidden shadow-2xl relative bg-[#F9F8F5]">
-      {/* HEADER：上下留白一致，並加入目前操作者身分顯示與快速切換按鈕 */}
+      {/* HEADER */}
       <header className="py-3.5 px-5 bg-white border-b border-[#EAE6DF] shadow-sm z-10 flex-shrink-0 flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-wider text-[#2D2A26] leading-tight">沖繩之旅</h1>
           <p className="text-sm text-[#8A857B] mt-0.5 font-bold tracking-widest">Winter 2027 • 6天5夜</p>
         </div>
         <div className="flex items-center gap-1.5">
-          {/* 點擊可切換目前是誰在操作 (本人/老婆/爸爸/媽媽) */}
           <button
             onClick={cycleMember}
             title="點擊切換目前操作者身分"
@@ -1184,12 +1163,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* MAIN CONTENT：採 flex-1 min-h-0 結構，確保各分頁子標籤固定且都能順利滑到最底 */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* ================= OVERVIEW TAB ================= */}
         {activeTab === 'overview' && (
           <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar animate-fade-in flex flex-col pb-10">
-            {/* Hero Section */}
             <div className="relative w-full h-44 bg-gradient-to-b from-[#A1C9F2] to-[#E3F2FA] overflow-hidden flex flex-col justify-center items-center pb-6 flex-shrink-0">
               <div className="bg-white/95 px-6 py-3 rounded-full text-[#2D2A26] font-bold text-base shadow-sm z-10 flex items-center gap-2 mt-2">
                 🐶 帶著好心情準備出發！
@@ -1197,7 +1175,6 @@ export default function App() {
               <div className="absolute -bottom-10 w-[150%] h-24 bg-[#F9F8F5]" style={{ borderRadius: '50% 50% 0 0' }} />
             </div>
 
-            {/* Countdown */}
             <div className="text-center text-[#2D2A26] relative z-10 -mt-3">
               <div className="text-[4.2rem] font-bold tracking-tight leading-none">
                 {daysLeft}
@@ -1206,7 +1183,6 @@ export default function App() {
               <div className="text-[#8A857B] text-base mt-2 tracking-widest font-bold">後出發</div>
             </div>
 
-            {/* Weather & Dates */}
             <div className="mx-5 mt-6 pt-5 border-t border-[#EAE6DF] flex justify-between items-center text-[#2D2A26]">
               <div className="flex gap-2.5 items-center">
                 <Sun className="w-7 h-7 text-[#F9A825] shrink-0" />
@@ -1233,16 +1209,13 @@ export default function App() {
               </a>
             </div>
 
-            {/* Tags */}
             <div className="flex justify-center gap-7 mt-5 text-[#6B6554] text-base font-bold">
               <span className="flex items-center gap-1.5"><MapPin className="w-5 h-5 text-[#B93A49]" /> 沖繩</span>
               <span className="flex items-center gap-1.5"><Users className="w-5 h-5 text-[#8A857B]" /> 4 人</span>
               <span className="flex items-center gap-1.5"><Wallet className="w-5 h-5 text-[#4A5D54]" /> JPY</span>
             </div>
 
-            {/* Cards Stack - Ordered per user request */}
             <div className="px-4 mt-7 space-y-4">
-              {/* 1. SOS 緊急方框 (最上方) */}
               <button
                 onClick={() => setShowSOSModal(true)}
                 className="w-full bg-[#FCECEE] rounded-2xl p-4 border-2 border-[#F2D7D9] flex justify-between items-center shadow-sm active:scale-95 transition-transform text-left"
@@ -1259,7 +1232,6 @@ export default function App() {
                 <ChevronRight className="w-5 h-5 text-[#B93A49] shrink-0" />
               </button>
 
-              {/* 2. 入境文件方框 (SOS 下方) */}
               <a
                 href="https://services.digital.go.jp/zh-cmn-hant/visit-japan-web/"
                 target="_blank"
@@ -1278,9 +1250,7 @@ export default function App() {
                 <ChevronRight className="w-5 h-5 text-[#DCD6CA] shrink-0" />
               </a>
 
-              {/* 3. 兩欄網格：護照、機票、保險、駕照、出發清單、日語手冊（精準排版不溢出、不換行） */}
               <div className="grid grid-cols-2 gap-3">
-                {/* 護照 */}
                 <a
                   href="https://drive.google.com/drive/folders/1gaZ12YAiPA6u4uUJw8lNPyC3Ek76_bxI?usp=drive_link"
                   target="_blank"
@@ -1302,7 +1272,6 @@ export default function App() {
                   </div>
                 </a>
 
-                {/* 機票 */}
                 <a
                   href="https://drive.google.com/drive/folders/1sqjviwF7gt85Ajwfi1USIeBGLnwXV_J4?usp=drive_link"
                   target="_blank"
@@ -1328,7 +1297,6 @@ export default function App() {
                   </div>
                 </a>
 
-                {/* 保險 */}
                 <a
                   href="https://drive.google.com/drive/folders/1o-sro3vPaht7UM415UNes-T_SATU_fGI?usp=drive_link"
                   target="_blank"
@@ -1350,7 +1318,6 @@ export default function App() {
                   </div>
                 </a>
 
-                {/* 駕照 */}
                 <a
                   href="https://drive.google.com/drive/folders/1xweNEY4e6jgzwSF3Bma4-VOaQjlbhyXa?usp=drive_link"
                   target="_blank"
@@ -1372,7 +1339,6 @@ export default function App() {
                   </div>
                 </a>
 
-                {/* 出發清單 */}
                 <div
                   onClick={() => { setActiveTab('tools'); setChecklistTab('departure'); }}
                   className="bg-[#FAF9F7] rounded-2xl p-3.5 border border-[#DCD6CA] shadow-sm cursor-pointer active:scale-95 transition-transform flex flex-col justify-between overflow-hidden"
@@ -1395,7 +1361,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 日語手冊 */}
                 <a
                   href="https://drive.google.com/drive/folders/1yuvcuEuMwgZKcPUSmu6pGMqx9Pwh97uV?usp=drive_link"
                   target="_blank"
@@ -1424,7 +1389,6 @@ export default function App() {
         {/* ================= DAILY / ITINERARY TAB ================= */}
         {activeTab === 'daily' && (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            {/* 固定頂部子分頁：行程總覽 / 行程細節 */}
             <div className="flex-shrink-0 flex bg-white border-b border-[#EAE6DF] px-5 pt-2 z-10">
               <button
                 onClick={() => setItinerarySubTab('overview')}
@@ -1444,7 +1408,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* 行程總覽 (獨立捲動區) */}
             {itinerarySubTab === 'overview' && (
               <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10 space-y-5 animate-fade-in">
                 <OkinawaRegionMap activeRegion={currentOverviewData.region} />
@@ -1488,7 +1451,6 @@ export default function App() {
               </div>
             )}
 
-            {/* 行程細節 (天數切換列固定 + 內容獨立捲動) */}
             {itinerarySubTab === 'detail' && (
               <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                 <div className="flex-shrink-0 flex overflow-x-auto gap-2.5 px-5 py-3 hide-scrollbar border-b border-[#EAE6DF] bg-[#FAF9F7]">
@@ -1509,7 +1471,6 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10 space-y-5 animate-fade-in">
-                  {/* 天氣 & 雨天備案切換 */}
                   <div className="bg-gradient-to-r from-[#EBF2F3] to-[#F5F7F7] p-4 rounded-2xl border border-[#D9E3E6] shadow-sm space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
@@ -1548,7 +1509,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 景點卡片清單 */}
                   <div className="space-y-4">
                     {displayedSpots.map((spot, idx) => {
                       let TypeIcon = MapPin;
@@ -1616,7 +1576,6 @@ export default function App() {
         {/* ================= EXPENSES / WALLET TAB ================= */}
         {activeTab === 'expenses' && (
           <div className="flex-1 min-h-0 overflow-y-auto hide-scrollbar p-5 pb-10 space-y-5 animate-fade-in">
-            {/* 即時匯率換算機 */}
             <div className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm">
               <div className="flex justify-between items-center mb-3">
                 <span className="text-sm font-bold text-[#2D2A26] flex items-center gap-1.5">
@@ -1654,7 +1613,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* 總花費卡片 */}
             <div className="bg-gradient-to-br from-[#4A5D54] to-[#3B4A43] p-5 rounded-2xl shadow-md text-white flex justify-between items-center">
               <div>
                 <p className="text-xs opacity-80 font-bold tracking-wider">目前總花費 (4人平均 ¥{perPersonAvg.toLocaleString()})</p>
@@ -1666,7 +1624,6 @@ export default function App() {
               <Receipt className="w-10 h-10 opacity-30" />
             </div>
 
-            {/* 圖表切換區塊 */}
             <div className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-xs font-bold text-[#8A857B]">
@@ -1724,7 +1681,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* 4人分帳結算卡片 */}
             {expenses.length > 0 && (
               <div className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm space-y-3">
                 <div className="flex justify-between items-center">
@@ -1753,7 +1709,6 @@ export default function App() {
               </div>
             )}
 
-            {/* 新增花費按鈕 */}
             <button
               onClick={openAddExpenseModal}
               className="w-full bg-white border-2 border-[#4A5D54] text-[#4A5D54] font-bold py-3.5 rounded-2xl shadow-sm flex justify-center items-center gap-2 text-base active:bg-[#EBF5EE]"
@@ -1761,7 +1716,6 @@ export default function App() {
               <Plus className="w-5 h-5" /> 新增一筆花費 (由 {currentMember} 紀錄)
             </button>
 
-            {/* 新增花費表單 */}
             {isAddingExpense && (
               <div className="bg-white p-5 rounded-2xl border border-[#EAE6DF] shadow-lg animate-fade-in">
                 <div className="flex justify-between items-center mb-4">
@@ -1814,7 +1768,6 @@ export default function App() {
               </div>
             )}
 
-            {/* 花費列表 (顯示付款人與新增紀錄者) */}
             <div className="space-y-3 pb-4">
               {expenses.map((expense) => (
                 <div key={expense.id} className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm flex justify-between items-center">
@@ -1829,7 +1782,7 @@ export default function App() {
                           {dayToDate[expense.day]} • {expense.category} • {expense.payer}付款
                         </span>
                         {expense.addedBy && (
-                          <MemberBadge name={`${expense.addedBy}紀錄`} />
+                          <MemberBadge name={expense.addedBy} prefix="✎ " />
                         )}
                       </div>
                       {expense.receiptImg && (
@@ -1865,14 +1818,12 @@ export default function App() {
         {/* ================= TOOLS / CHECKLIST TAB ================= */}
         {activeTab === 'tools' && (
           <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[#F9F8F5]">
-            {/* 固定頂部子分頁：出發清單 / 行李打包 / 購物清單 */}
             <div className="flex-shrink-0 flex bg-white border-b border-[#EAE6DF] px-4 pt-2 z-10">
               <button onClick={() => setChecklistTab('departure')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'departure' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>出發清單</button>
               <button onClick={() => setChecklistTab('luggage')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'luggage' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>行李打包</button>
               <button onClick={() => setChecklistTab('shopping')} className={`flex-1 pb-3 text-base font-bold border-b-2 transition-colors ${checklistTab === 'shopping' ? 'border-[#4A5D54] text-[#4A5D54]' : 'border-transparent text-[#8A857B]'}`}>購物清單</button>
             </div>
 
-            {/* 切換目前操作者身分提示列 */}
             <div className="flex-shrink-0 bg-[#FAF9F7] border-b border-[#EAE6DF] px-5 py-2 flex items-center justify-between">
               <span className="text-xs font-bold text-[#8A857B]">點選切換目前操作者：</span>
               <div className="flex gap-1.5">
@@ -2048,7 +1999,7 @@ export default function App() {
         </div>
       )}
 
-      {/* BOTTOM TAB BAR：改為 flex-shrink-0 獨立佔位，絕不遮擋任何頁面最底部 */}
+      {/* BOTTOM TAB BAR */}
       <nav className="flex-shrink-0 bg-white border-t border-[#EAE6DF] pt-2.5 px-4 pb-5 flex justify-around items-center z-20 w-full shadow-[0_-4px_12px_rgba(0,0,0,0.04)]">
         <button onClick={() => setActiveTab('overview')} className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${activeTab === 'overview' ? 'text-[#4A5D54]' : 'text-[#A09C94]'}`}>
           <Home className="w-6 h-6 mb-1" />
@@ -2076,4 +2027,4 @@ export default function App() {
       `}} />
     </div>
   );
-}```
+}

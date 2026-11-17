@@ -861,7 +861,15 @@ export default function App() {
   // --- EXPENSES STATE ---
   const [expenses, setExpenses] = useState(() => getSavedState('okinawa_expenses', []));
   const [isAddingExpense, setIsAddingExpense] = useState(false);
-  const [newExpense, setNewExpense] = useState({ amount: '', category: '飲食', desc: '', day: 1, payer: '本人', receiptImg: '' });
+  const [newExpense, setNewExpense] = useState({
+    amount: '',
+    category: '飲食',
+    desc: '',
+    day: 1,
+    payer: '本人',
+    splitBetween: [...FAMILY_MEMBERS],
+    receiptImg: ''
+  });
   const [exchangeRate, setExchangeRate] = useState(0.215);
   const [calcJpy, setCalcJpy] = useState('1000');
   const [chartType, setChartType] = useState('trend');
@@ -1030,22 +1038,88 @@ export default function App() {
     return Object.entries(map).map(([name, value]) => ({ name, value })).filter(d => d.value > 0);
   }, [expenses]);
 
-  const payerTotals = useMemo(() => {
-    const map = {};
-    expenses.forEach(e => {
-      const p = e.payer || '本人';
-      map[p] = (map[p] || 0) + Number(e.amount || 0);
+  // --- 完整代墊與分帳結算演算法 (計算每人收支淨額與最簡轉帳路徑) ---
+  const settlementData = useMemo(() => {
+    const paidMap = {};
+    const owedMap = {};
+    FAMILY_MEMBERS.forEach(m => {
+      paidMap[m] = 0;
+      owedMap[m] = 0;
     });
-    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+
+    expenses.forEach(e => {
+      const amt = Number(e.amount || 0);
+      if (amt <= 0) return;
+      const payer = FAMILY_MEMBERS.includes(e.payer) ? e.payer : '本人';
+      const participants = (Array.isArray(e.splitBetween) && e.splitBetween.length > 0)
+        ? e.splitBetween.filter(m => FAMILY_MEMBERS.includes(m))
+        : FAMILY_MEMBERS;
+      const validParticipants = participants.length > 0 ? participants : FAMILY_MEMBERS;
+
+      paidMap[payer] += amt;
+      const share = amt / validParticipants.length;
+      validParticipants.forEach(m => {
+        owedMap[m] += share;
+      });
+    });
+
+    const memberSummary = FAMILY_MEMBERS.map(m => ({
+      name: m,
+      paid: Math.round(paidMap[m]),
+      owed: Math.round(owedMap[m]),
+      net: Math.round(paidMap[m] - owedMap[m])
+    }));
+
+    // 貪婪演算法：配對少付者(debtors)與多付者(creditors)，算出最少次数的轉帳方式
+    const creditors = FAMILY_MEMBERS
+      .map(m => ({ name: m, amount: paidMap[m] - owedMap[m] }))
+      .filter(x => x.amount > 0.5)
+      .sort((a, b) => b.amount - a.amount);
+
+    const debtors = FAMILY_MEMBERS
+      .map(m => ({ name: m, amount: owedMap[m] - paidMap[m] }))
+      .filter(x => x.amount > 0.5)
+      .sort((a, b) => b.amount - a.amount);
+
+    const transfers = [];
+    let i = 0;
+    let j = 0;
+    while (i < debtors.length && j < creditors.length) {
+      const debtor = debtors[i];
+      const creditor = creditors[j];
+      const transferAmt = Math.min(debtor.amount, creditor.amount);
+      if (Math.round(transferAmt) > 0) {
+        transfers.push({
+          from: debtor.name,
+          to: creditor.name,
+          amount: Math.round(transferAmt)
+        });
+      }
+      debtor.amount -= transferAmt;
+      creditor.amount -= transferAmt;
+      if (debtor.amount <= 0.5) i++;
+      if (creditor.amount <= 0.5) j++;
+    }
+
+    return { memberSummary, transfers };
   }, [expenses]);
 
   const copySettlementReport = () => {
     const lines = [
       `🌴 沖繩 6天5夜 旅遊帳本結算`,
       `總花費：¥ ${totalExpense.toLocaleString()} (約 NT$ ${Math.round(totalExpense * exchangeRate).toLocaleString()})`,
-      `4人平均：每人 ¥ ${perPersonAvg.toLocaleString()} (約 NT$ ${Math.round(perPersonAvg * exchangeRate).toLocaleString()})`,
-      `--- 各人代墊統計 ---`,
-      ...payerTotals.map(([payer, amt]) => `• ${payer}：¥ ${amt.toLocaleString()} (約 NT$ ${Math.round(amt * exchangeRate).toLocaleString()})`)
+      ``,
+      `💸 【建議轉帳結算】`,
+      ...(settlementData.transfers.length > 0
+        ? settlementData.transfers.map(
+            t => `• ${t.from} ➔ 給 ${t.to}：¥ ${t.amount.toLocaleString()} (約 NT$ ${Math.round(t.amount * exchangeRate).toLocaleString()})`
+          )
+        : [`• 目前帳目已結清，無需轉帳！`]),
+      ``,
+      `📊 【各人收支明細】`,
+      ...settlementData.memberSummary.map(
+        m => `• ${m.name}：已代墊 ¥${m.paid.toLocaleString()} / 應分攤 ¥${m.owed.toLocaleString()} (${m.net > 0 ? `應收 ¥${m.net.toLocaleString()}` : m.net < 0 ? `應付 ¥${Math.abs(m.net).toLocaleString()}` : '已結清'})`
+      )
     ];
     try {
       navigator.clipboard.writeText(lines.join('\n'));
@@ -1079,8 +1153,27 @@ export default function App() {
   };
 
   const openAddExpenseModal = () => {
-    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: currentMember, receiptImg: '' });
+    setNewExpense({
+      amount: '',
+      category: '飲食',
+      desc: '',
+      day: selectedDay,
+      payer: currentMember,
+      splitBetween: [...FAMILY_MEMBERS],
+      receiptImg: ''
+    });
     setIsAddingExpense(true);
+  };
+
+  const toggleSplitMember = (member) => {
+    setNewExpense(prev => {
+      const current = prev.splitBetween || [...FAMILY_MEMBERS];
+      if (current.includes(member)) {
+        if (current.length <= 1) return prev; // 至少保留 1 人分攤
+        return { ...prev, splitBetween: current.filter(m => m !== member) };
+      }
+      return { ...prev, splitBetween: FAMILY_MEMBERS.filter(m => [...current, member].includes(m)) };
+    });
   };
 
   const handleAddExpense = (e) => {
@@ -1091,6 +1184,7 @@ export default function App() {
         ...newExpense,
         id: Date.now(),
         amount: Number(newExpense.amount),
+        splitBetween: newExpense.splitBetween?.length ? newExpense.splitBetween : [...FAMILY_MEMBERS],
         addedBy: currentMember
       },
       ...expenses
@@ -1098,7 +1192,15 @@ export default function App() {
     setExpenses(updated);
     saveData('expenses', updated, 'okinawa_expenses');
     setIsAddingExpense(false);
-    setNewExpense({ amount: '', category: '飲食', desc: '', day: selectedDay, payer: currentMember, receiptImg: '' });
+    setNewExpense({
+      amount: '',
+      category: '飲食',
+      desc: '',
+      day: selectedDay,
+      payer: currentMember,
+      splitBetween: [...FAMILY_MEMBERS],
+      receiptImg: ''
+    });
   };
 
   const deleteExpense = (id) => {
@@ -1848,8 +1950,9 @@ export default function App() {
               </div>
             </div>
 
+            {/* 4 人代墊與自動分帳結算卡片 */}
             {expenses.length > 0 && (
-              <div className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm space-y-3">
+              <div className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-sm font-bold text-[#2D2A26]">4 人代墊與分帳結算</h3>
                   <button
@@ -1860,18 +1963,67 @@ export default function App() {
                     {copiedSettlement ? '已複製！' : '複製傳 LINE'}
                   </button>
                 </div>
-                <div className="divide-y divide-[#F0EBE1]">
-                  {payerTotals.map(([payer, amt]) => (
-                    <div key={payer} className="py-2 flex justify-between items-center text-sm">
-                      <span className="font-bold text-[#2D2A26]">{payer}</span>
-                      <span className="font-bold text-[#4A5D54]">
-                        ¥ {amt.toLocaleString()}
-                        <span className="text-xs text-[#8A857B] font-normal ml-1.5">
-                          (NT$ {Math.round(amt * exchangeRate).toLocaleString()})
-                        </span>
-                      </span>
+
+                {/* 建議轉帳清單：誰要給代墊的人多少錢 */}
+                <div className="bg-[#FDF2E9] border border-[#F4E0D1] rounded-xl p-3.5 space-y-2.5">
+                  <div className="text-xs font-bold text-[#C75A22] flex items-center gap-1.5">
+                    💸 誰要給誰多少錢 (最簡轉帳建議)
+                  </div>
+                  {settlementData.transfers.length > 0 ? (
+                    <div className="space-y-2">
+                      {settlementData.transfers.map((t, idx) => (
+                        <div key={idx} className="bg-white rounded-xl px-3 py-2.5 border border-[#F4E0D1] flex items-center justify-between gap-2 shadow-sm">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <MemberBadge name={t.from} />
+                            <span className="text-xs font-bold text-[#8A857B]">➔ 給</span>
+                            <MemberBadge name={t.to} />
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-sm font-bold text-[#C75A22]">¥ {t.amount.toLocaleString()}</div>
+                            <div className="text-[10px] font-bold text-[#8A857B]">約 NT$ {Math.round(t.amount * exchangeRate).toLocaleString()}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="text-xs font-bold text-[#2F6B4A] bg-[#EBF5EE] p-2.5 rounded-lg text-center">
+                      🎉 目前帳目剛好平分結清，無人需要轉帳！
+                    </div>
+                  )}
+                </div>
+
+                {/* 各人收支明細 */}
+                <div>
+                  <div className="text-xs font-bold text-[#8A857B] mb-2">各人代墊與應分攤明細</div>
+                  <div className="divide-y divide-[#F0EBE1]">
+                    {settlementData.memberSummary.map((m) => (
+                      <div key={m.name} className="py-2.5 flex justify-between items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <MemberBadge name={m.name} />
+                            <span className="text-xs text-[#6B6554] font-medium">
+                              已付 ¥{m.paid.toLocaleString()} / 應攤 ¥{m.owed.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {m.net > 0 ? (
+                            <span className="text-xs font-bold px-2 py-1 rounded-lg bg-[#EBF5EE] text-[#2F6B4A]">
+                              應收 ¥{m.net.toLocaleString()}
+                            </span>
+                          ) : m.net < 0 ? (
+                            <span className="text-xs font-bold px-2 py-1 rounded-lg bg-[#FCECEE] text-[#B93A49]">
+                              應付 ¥{Math.abs(m.net).toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold px-2 py-1 rounded-lg bg-[#FAF9F7] text-[#8A857B]">
+                              已結清
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1910,12 +2062,39 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-[#8A857B] mb-1">付款人</label>
+                      <label className="block text-xs font-bold text-[#8A857B] mb-1">誰先代墊付款</label>
                       <select value={newExpense.payer} onChange={e => setNewExpense({ ...newExpense, payer: e.target.value })} className="w-full bg-[#FAF9F7] border border-[#EAE6DF] rounded-xl p-2.5 text-[#2D2A26] font-bold focus:outline-none">
                         {FAMILY_MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                   </div>
+
+                  {/* 分攤對象選擇 (預設4人平分) */}
+                  <div>
+                    <label className="block text-xs font-bold text-[#8A857B] mb-1.5">
+                      這筆費用由誰平分 ({(newExpense.splitBetween || FAMILY_MEMBERS).length} 人)
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {FAMILY_MEMBERS.map(m => {
+                        const selected = (newExpense.splitBetween || FAMILY_MEMBERS).includes(m);
+                        return (
+                          <button
+                            type="button"
+                            key={m}
+                            onClick={() => toggleSplitMember(m)}
+                            className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                              selected
+                                ? `${MEMBER_BADGE_STYLE[m]} shadow-sm`
+                                : 'bg-[#FAF9F7] text-[#A09C94] border-[#EAE6DF]'
+                            }`}
+                          >
+                            {selected ? '✓ ' : ''}{m}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-bold text-[#8A857B] mb-1">項目說明</label>
                     <input type="text" required value={newExpense.desc} onChange={e => setNewExpense({ ...newExpense, desc: e.target.value })} className="w-full bg-[#FAF9F7] border border-[#EAE6DF] rounded-xl p-2.5 text-[#2D2A26] focus:outline-none focus:border-[#4A5D54]" placeholder="例如：暖暮拉麵" />
@@ -1936,43 +2115,49 @@ export default function App() {
             )}
 
             <div className="space-y-3 pb-4">
-              {expenses.map((expense) => (
-                <div key={expense.id} className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm flex justify-between items-center">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="bg-[#FAF9F7] p-2.5 rounded-xl border border-[#F0EBE1] shrink-0">
-                      <Tag className="w-4 h-4 text-[#8A857B]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-base text-[#2D2A26] truncate">{expense.desc}</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                        <span className="text-xs text-[#8A857B] font-medium">
-                          {dayToDate[expense.day]} • {expense.category} • {expense.payer}付款
-                        </span>
-                        {expense.addedBy && (
-                          <MemberBadge name={expense.addedBy} prefix="✎ " />
+              {expenses.map((expense) => {
+                const splitList = Array.isArray(expense.splitBetween) && expense.splitBetween.length > 0
+                  ? expense.splitBetween
+                  : FAMILY_MEMBERS;
+                const splitLabel = splitList.length === 4 ? '4人平分' : `${splitList.join('、')}平分`;
+                return (
+                  <div key={expense.id} className="bg-white p-4 rounded-2xl border border-[#EAE6DF] shadow-sm flex justify-between items-center">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="bg-[#FAF9F7] p-2.5 rounded-xl border border-[#F0EBE1] shrink-0">
+                        <Tag className="w-4 h-4 text-[#8A857B]" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-base text-[#2D2A26] truncate">{expense.desc}</p>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          <span className="text-xs text-[#8A857B] font-medium">
+                            {dayToDate[expense.day]} • {expense.category} • {expense.payer}代墊 • {splitLabel}
+                          </span>
+                          {expense.addedBy && (
+                            <MemberBadge name={expense.addedBy} prefix="✎ " />
+                          )}
+                        </div>
+                        {expense.receiptImg && (
+                          <button
+                            onClick={() => setPreviewReceipt(expense.receiptImg)}
+                            className="mt-1.5 text-xs text-[#316999] font-bold underline flex items-center gap-1"
+                          >
+                            <Camera className="w-3 h-3" /> 查看收據照片
+                          </button>
                         )}
                       </div>
-                      {expense.receiptImg && (
-                        <button
-                          onClick={() => setPreviewReceipt(expense.receiptImg)}
-                          className="mt-1.5 text-xs text-[#316999] font-bold underline flex items-center gap-1"
-                        >
-                          <Camera className="w-3 h-3" /> 查看收據照片
-                        </button>
-                      )}
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="text-right">
+                        <div className="font-bold text-base text-[#C75A22]">¥ {Number(expense.amount).toLocaleString()}</div>
+                        <div className="text-[11px] text-[#8A857B]">NT$ {Math.round(Number(expense.amount) * exchangeRate).toLocaleString()}</div>
+                      </div>
+                      <button onClick={() => deleteExpense(expense.id)} className="text-[#DCD6CA] hover:text-[#B93A49] p-1">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <div className="text-right">
-                      <div className="font-bold text-base text-[#C75A22]">¥ {Number(expense.amount).toLocaleString()}</div>
-                      <div className="text-[11px] text-[#8A857B]">NT$ {Math.round(Number(expense.amount) * exchangeRate).toLocaleString()}</div>
-                    </div>
-                    <button onClick={() => deleteExpense(expense.id)} className="text-[#DCD6CA] hover:text-[#B93A49] p-1">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {expenses.length === 0 && (
                 <div className="text-center text-[#8A857B] py-8 text-sm font-medium">
                   目前還沒有花費紀錄喔！
